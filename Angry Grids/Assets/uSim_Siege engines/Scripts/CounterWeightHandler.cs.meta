@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 0036a48d3501cdf43ab39e85c3283080
+timeCreated: 1483098150
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Scripts/CounterWeightHandler.cs
+  uploadId: 153939
