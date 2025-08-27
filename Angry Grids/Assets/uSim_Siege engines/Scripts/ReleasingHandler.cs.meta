@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: ad3aac531446bbd46b8e71966e0aac1a
+timeCreated: 1482935731
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Scripts/ReleasingHandler.cs
+  uploadId: 153939

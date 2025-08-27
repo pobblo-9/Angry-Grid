@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 69382dba619c6a142821c7d4c44806f7
+timeCreated: 1483100902
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Prefabs/parts/Moveable Platform.prefab
+  uploadId: 153939

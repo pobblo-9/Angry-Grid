@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 96202dd21aa201f4184813857a99fb66
+timeCreated: 1482928894
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Scripts/MecanismInteraction.cs
+  uploadId: 153939
