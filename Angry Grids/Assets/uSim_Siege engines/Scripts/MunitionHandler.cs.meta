@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: dab2fcb8d9bd74048a9e6b5eb40cf87f
+timeCreated: 1482934260
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Scripts/MunitionHandler.cs
+  uploadId: 153939

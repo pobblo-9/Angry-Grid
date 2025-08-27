@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: d8e800018b48f7c469d60c4677d92516
+timeCreated: 1482946725
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Prefabs/parts/ropeSegment.prefab
+  uploadId: 153939

@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: 9c9b101ad6ce2e64fbc755fa5635201c
+timeCreated: 1482783918
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Scripts/GravityAxis.cs
+  uploadId: 153939

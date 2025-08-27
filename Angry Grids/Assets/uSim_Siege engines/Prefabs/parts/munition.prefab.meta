@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: b0b92fd3ddd9cfe4d8830d2d433a1234
+timeCreated: 1482946751
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Prefabs/parts/munition.prefab
+  uploadId: 153939

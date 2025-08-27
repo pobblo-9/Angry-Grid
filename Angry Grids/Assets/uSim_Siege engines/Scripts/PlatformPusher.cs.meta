@@ -1,0 +1,19 @@
+fileFormatVersion: 2
+guid: a457ab2b4017a2d48b18791e660a2472
+timeCreated: 1483023252
+licenseType: Store
+MonoImporter:
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Scripts/PlatformPusher.cs
+  uploadId: 153939

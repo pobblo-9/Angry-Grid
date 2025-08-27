@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: 8adc866bd2508e345a206135527682e0
+timeCreated: 1483100896
+licenseType: Store
+NativeFormatImporter:
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 79619
+  packageName: uSim Siege Engines
+  packageVersion: 1.0
+  assetPath: Assets/uSim_Siege engines/Prefabs/parts/mover handler.prefab
+  uploadId: 153939
