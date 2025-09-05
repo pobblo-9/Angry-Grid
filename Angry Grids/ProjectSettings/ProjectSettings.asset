@@ -852,8 +852,8 @@ PlayerSettings:
   editorAssembliesCompatibilityLevel: 1
   m_RenderingPath: 1
   m_MobileRenderingPath: 1
-  metroPackageName: Angry Grids
-  metroPackageVersion: 
+  metroPackageName: AngryGrids
+  metroPackageVersion: 1.0.0.0
   metroCertificatePath: 
   metroCertificatePassword: 
   metroCertificateSubject: 
@@ -861,7 +861,7 @@ PlayerSettings:
   metroCertificateNotAfter: 0000000000000000
   metroApplicationDescription: Angry Grids
   wsaImages: {}
-  metroTileShortName: 
+  metroTileShortName: Angry Grids
   metroTileShowName: 0
   metroMediumTileShowName: 0
   metroLargeTileShowName: 0
@@ -930,10 +930,10 @@ PlayerSettings:
   captureStartupLogs: {}
   activeInputHandler: 2
   windowsGamepadBackendHint: 0
-  cloudProjectId: a8f003b8-5006-47ae-b084-825fde9e186e
+  cloudProjectId: cd787a3e-938d-4a42-9b07-a729cd0cfe39
   framebufferDepthMemorylessMode: 0
   qualitySettingsNames: []
-  projectName: Angry Grids
+  projectName: Angry Grid
   organizationId: gamerdan1111
   cloudEnabled: 0
   legacyClampBlendShapeWeights: 0
