@@ -1,15 +1,16 @@
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections;
 
 public class TurnManager : MonoBehaviour
 {
-    [Header(“Players”)]
+    [Header("Players")]
     public SlingShotController player1Slingshot;
     public SlingShotController player2Slingshot;
     public Camera player1Camera;
     public Camera player2Camera;
 
-[Header("UI")]
+    [Header("UI")]
     public Text turnIndicator;
     public GameObject gameOverPanel;
     public Text gameOverText;
@@ -20,6 +21,7 @@ public class TurnManager : MonoBehaviour
     private int currentPlayer = 1; // 1 or 2
     private TicTacToeBoard gameBoard;
     private bool gameActive = true;
+    private bool waitingForBird = false; // Track if we're waiting for a bird to settle
 
     public static TurnManager Instance { get; private set; }
 
@@ -38,6 +40,7 @@ public class TurnManager : MonoBehaviour
     {
         currentPlayer = 1;
         gameActive = true;
+        waitingForBird = false;
 
         // Set initial turn
         SetPlayerTurn(currentPlayer);
@@ -53,12 +56,12 @@ public class TurnManager : MonoBehaviour
     void SetPlayerTurn(int player)
     {
         // Enable/disable slingshots
-        player1Slingshot.SetActive(player == 1);
-        player2Slingshot.SetActive(player == 2);
+        if (player1Slingshot != null) player1Slingshot.SetActive(player == 1);
+        if (player2Slingshot != null) player2Slingshot.SetActive(player == 2);
 
         // Switch cameras
-        player1Camera.gameObject.SetActive(player == 1);
-        player2Camera.gameObject.SetActive(player == 2);
+        if (player1Camera != null) player1Camera.gameObject.SetActive(player == 1);
+        if (player2Camera != null) player2Camera.gameObject.SetActive(player == 2);
 
         // Update UI
         if (turnIndicator != null)
@@ -69,19 +72,63 @@ public class TurnManager : MonoBehaviour
     {
         if (!gameActive) return;
 
+        waitingForBird = true;
         // Start monitoring for when the bird stops moving
         StartCoroutine(WaitForBirdToSettle());
+    }
+
+    // Called when bird hits ground without hitting board
+    public void OnBirdHitGround()
+    {
+        if (!gameActive || !waitingForBird) return;
+
+        Debug.Log("Bird hit ground - ending turn immediately");
+
+        // Stop waiting and immediately switch turns
+        StopAllCoroutines();
+        waitingForBird = false;
+
+        // Reset the bird and switch turns
+        SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
+        if (currentSlingshot != null)
+        {
+            StartCoroutine(ResetBirdAfterDelay(currentSlingshot, 1f));
+        }
     }
 
     System.Collections.IEnumerator WaitForBirdToSettle()
     {
         SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
-        Rigidbody birdRb = currentSlingshot.GetComponent<Rigidbody>();
+
+        if (currentSlingshot == null)
+        {
+            Debug.LogError("Current slingshot is null!");
+            waitingForBird = false;
+            yield break;
+        }
+
+        // Get the bird's Rigidbody (the slingshot script is on the bird)
+        GameObject bird = currentSlingshot.GetBird();
+        if (bird == null)
+        {
+            Debug.LogError("Bird is null!");
+            waitingForBird = false;
+            yield break;
+        }
+
+        Rigidbody birdRb = bird.GetComponent<Rigidbody>();
+        if (birdRb == null)
+        {
+            Debug.LogError("Bird has no Rigidbody!");
+            waitingForBird = false;
+            yield break;
+        }
 
         // Wait for bird to stop moving
         yield return new WaitForSeconds(1f); // Initial delay
 
-        while (birdRb.linearVelocity.magnitude > 0.1f)
+        // Wait until bird velocity is low enough
+        while (birdRb.linearVelocity.magnitude > 0.1f || birdRb.angularVelocity.magnitude > 0.1f)
         {
             yield return new WaitForSeconds(0.1f);
         }
@@ -91,8 +138,25 @@ public class TurnManager : MonoBehaviour
 
         // Reset bird position
         currentSlingshot.ResetBird();
+        waitingForBird = false;
 
         // Switch to next player
+        if (gameActive)
+        {
+            SwitchTurn();
+        }
+    }
+
+    // Coroutine to reset bird after a short delay (for visual feedback)
+    System.Collections.IEnumerator ResetBirdAfterDelay(SlingShotController slingshot, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+
+        if (slingshot != null)
+        {
+            slingshot.ResetBird();
+        }
+
         if (gameActive)
         {
             SwitchTurn();
@@ -108,11 +172,11 @@ public class TurnManager : MonoBehaviour
     public void OnSquareClaimed(int squareIndex, int player)
     {
         // Check for win condition
-        if (gameBoard.CheckWin(player))
+        if (gameBoard != null && gameBoard.CheckWin(player))
         {
             EndGame(player);
         }
-        else if (gameBoard.IsBoardFull())
+        else if (gameBoard != null && gameBoard.IsBoardFull())
         {
             EndGame(0); // Draw
         }
@@ -121,16 +185,16 @@ public class TurnManager : MonoBehaviour
     void EndGame(int winner)
     {
         gameActive = false;
+        waitingForBird = false;
 
         // Disable both slingshots
-        player1Slingshot.SetActive(false);
-        player2Slingshot.SetActive(false);
+        if (player1Slingshot != null) player1Slingshot.SetActive(false);
+        if (player2Slingshot != null) player2Slingshot.SetActive(false);
 
         // Show game over UI
         if (gameOverPanel != null && gameOverText != null)
         {
             gameOverPanel.SetActive(true);
-
             if (winner == 0)
                 gameOverText.text = "It's a Draw!";
             else
@@ -141,11 +205,12 @@ public class TurnManager : MonoBehaviour
     public void RestartGame()
     {
         // Reset the board
-        gameBoard.ResetBoard();
+        if (gameBoard != null)
+            gameBoard.ResetBoard();
 
         // Reset both birds
-        player1Slingshot.ResetBird();
-        player2Slingshot.ResetBird();
+        if (player1Slingshot != null) player1Slingshot.ResetBird();
+        if (player2Slingshot != null) player2Slingshot.ResetBird();
 
         // Restart game
         SetupGame();

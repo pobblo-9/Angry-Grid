@@ -1,8 +1,7 @@
 using UnityEngine;
-
+using System.Collections;
 public class TicTacToeSquare : MonoBehaviour
 {
-    [Header(“Visual Feedback”)]
     public Material defaultMaterial;
     public Material player1Material; // Red material
     public Material player2Material; // Blue material

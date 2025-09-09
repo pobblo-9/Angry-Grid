@@ -3,7 +3,6 @@ using UnityEngine;
 
 public class TicTacToeBoard : MonoBehaviour
 {
-    [Header(“Board Setup”)]
     public TicTacToeSquare[] squares = new TicTacToeSquare[9]; // 3x3 grid
     public GameObject player1Symbol; // X prefab
     public GameObject player2Symbol; // O prefab
