@@ -96,6 +96,25 @@ public class TurnManager : MonoBehaviour
         }
     }
 
+    // Called when bird hits the tic-tac-toe board
+    public void OnBirdHitBoard()
+    {
+        if (!gameActive || !waitingForBird) return;
+
+        Debug.Log("Bird hit board - ending turn immediately");
+
+        // Stop waiting and immediately switch turns
+        StopAllCoroutines();
+        waitingForBird = false;
+
+        // Reset the bird and switch turns after a short delay
+        SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
+        if (currentSlingshot != null)
+        {
+            StartCoroutine(ResetBirdAfterDelay(currentSlingshot, 1.5f)); // Slightly longer delay for board hits
+        }
+    }
+
     System.Collections.IEnumerator WaitForBirdToSettle()
     {
         SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
