@@ -92,7 +92,12 @@ public class TurnManager : MonoBehaviour
         SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
         if (currentSlingshot != null)
         {
-            StartCoroutine(ResetBirdAfterDelay(currentSlingshot, 1f));
+            currentSlingshot.ResetBird();
+        }
+
+        if (gameActive)
+        {
+            SwitchTurn();
         }
     }
 
@@ -107,15 +112,20 @@ public class TurnManager : MonoBehaviour
         StopAllCoroutines();
         waitingForBird = false;
 
-        // Reset the bird and switch turns after a short delay
         SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
         if (currentSlingshot != null)
         {
-            StartCoroutine(ResetBirdAfterDelay(currentSlingshot, 1.5f)); // Slightly longer delay for board hits
+            // reset instantly (no delay)
+            currentSlingshot.ResetBird();
+        }
+
+        if (gameActive)
+        {
+            SwitchTurn();
         }
     }
 
-    System.Collections.IEnumerator WaitForBirdToSettle()
+    IEnumerator WaitForBirdToSettle()
     {
         SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
 
@@ -126,7 +136,6 @@ public class TurnManager : MonoBehaviour
             yield break;
         }
 
-        // Get the bird's Rigidbody (the slingshot script is on the bird)
         GameObject bird = currentSlingshot.GetBird();
         if (bird == null)
         {
@@ -155,27 +164,10 @@ public class TurnManager : MonoBehaviour
         // Additional delay before switching turns
         yield return new WaitForSeconds(turnSwitchDelay);
 
-        // Reset bird position
         currentSlingshot.ResetBird();
         waitingForBird = false;
 
         // Switch to next player
-        if (gameActive)
-        {
-            SwitchTurn();
-        }
-    }
-
-    // Coroutine to reset bird after a short delay (for visual feedback)
-    System.Collections.IEnumerator ResetBirdAfterDelay(SlingShotController slingshot, float delay)
-    {
-        yield return new WaitForSeconds(delay);
-
-        if (slingshot != null)
-        {
-            slingshot.ResetBird();
-        }
-
         if (gameActive)
         {
             SwitchTurn();

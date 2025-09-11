@@ -44,25 +44,12 @@ public class SlingShotController : MonoBehaviour
         originalPosition = transform.position;
         originalRotation = transform.rotation;
 
-        // Setup bands
-        if (leftBand != null)
-        {
-            leftBand.positionCount = 3;
-            leftBand.enabled = false;
-        }
+        if (leftBand != null) { leftBand.positionCount = 3; leftBand.enabled = false; }
+        if (rightBand != null) { rightBand.positionCount = 3; rightBand.enabled = false; }
+        if (trajectoryLine != null) { trajectoryLine.positionCount = trajectoryPoints; trajectoryLine.enabled = false; }
 
-        if (rightBand != null)
-        {
-            rightBand.positionCount = 3;
-            rightBand.enabled = false;
-        }
-
-        // Setup trajectory
-        if (trajectoryLine != null)
-        {
-            trajectoryLine.positionCount = trajectoryPoints;
-            trajectoryLine.enabled = false;
-        }
+        // ensure bird starts kinematic until player starts aiming
+        if (rb != null) rb.isKinematic = true;
     }
 
     void Update()
@@ -95,9 +82,9 @@ public class SlingShotController : MonoBehaviour
             else if (currentStage == AimingStage.Horizontal) UpdateHorizontalAiming();
         }
 
-        if (Input.GetMouseButtonUp(0))
+        if (Input.GetMouseButtonUp(0) && currentStage == AimingStage.Horizontal)
         {
-            if (currentStage == AimingStage.Horizontal) LaunchBird();
+            LaunchBird();
         }
     }
 
@@ -105,7 +92,7 @@ public class SlingShotController : MonoBehaviour
     {
         currentStage = AimingStage.Vertical;
         isDragging = true;
-        rb.isKinematic = true;
+        if (rb != null) rb.isKinematic = true;
 
         if (leftBand != null) leftBand.enabled = true;
         if (rightBand != null) rightBand.enabled = true;
@@ -139,9 +126,7 @@ public class SlingShotController : MonoBehaviour
         Vector3 worldMouse = startPos;
 
         if (dragPlane.Raycast(mouseRay, out float distance))
-        {
             worldMouse = mouseRay.GetPoint(distance);
-        }
 
         Vector3 horizontalDrag = worldMouse - startPos;
         horizontalDrag.y = 0;
@@ -161,14 +146,14 @@ public class SlingShotController : MonoBehaviour
         isDragging = false;
         isLaunched = true;
         hasHitBoard = false;
-        rb.isKinematic = false;
+        if (rb != null) rb.isKinematic = false;
         currentStage = AimingStage.None;
 
         Vector3 pullVector = startPos - transform.position;
 
         if (pullVector.magnitude >= minLaunch)
         {
-            rb.AddForce(pullVector * forceMultiplier, ForceMode.Impulse);
+            if (rb != null) rb.AddForce(pullVector * forceMultiplier, ForceMode.Impulse);
 
             CameraFollowBird cameraFollow = FindFirstObjectByType<CameraFollowBird>();
             if (cameraFollow != null) cameraFollow.OnBirdLaunched();
@@ -187,10 +172,8 @@ public class SlingShotController : MonoBehaviour
     {
         if (leftBand == null || rightBand == null || leftPost == null || rightPost == null) return;
 
-        Vector3 midLeft = (leftPost.position + transform.position) / 2;
-        midLeft.y -= 0.5f;
-        Vector3 midRight = (rightPost.position + transform.position) / 2;
-        midRight.y -= 0.5f;
+        Vector3 midLeft = (leftPost.position + transform.position) / 2; midLeft.y -= 0.5f;
+        Vector3 midRight = (rightPost.position + transform.position) / 2; midRight.y -= 0.5f;
 
         leftBand.SetPosition(0, leftPost.position);
         leftBand.SetPosition(1, midLeft);
@@ -219,9 +202,7 @@ public class SlingShotController : MonoBehaviour
         }
 
         if (trajectoryLine.material != null)
-        {
             trajectoryLine.material.mainTextureScale = new Vector2(trajectoryPoints / 2f, 1);
-        }
     }
 
     void OnCollisionEnter(Collision collision)
@@ -232,19 +213,35 @@ public class SlingShotController : MonoBehaviour
         if (square != null)
         {
             hasHitBoard = true;
-            if (TurnManager.Instance != null) TurnManager.Instance.OnBirdHitBoard();
+            Debug.Log("Bird hit tic-tac-toe square!");
+
+            if (TurnManager.Instance != null)
+            {
+                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+                square.OnSquareHit(currentPlayer);
+                TurnManager.Instance.OnBirdHitBoard(); // reset immediately
+            }
             return;
         }
 
         if (collision.gameObject.CompareTag("TicTacToeSquare"))
         {
             hasHitBoard = true;
-            if (TurnManager.Instance != null) TurnManager.Instance.OnBirdHitBoard();
+            Debug.Log("Bird hit tic-tac-toe board (by tag)!");
+
+            TicTacToeSquare parentSquare = collision.gameObject.GetComponentInParent<TicTacToeSquare>();
+            if (parentSquare != null && TurnManager.Instance != null)
+            {
+                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+                parentSquare.OnSquareHit(currentPlayer);
+                TurnManager.Instance.OnBirdHitBoard(); // reset immediately
+            }
             return;
         }
 
         if (collision.gameObject.CompareTag("Ground") && !hasHitBoard)
         {
+            Debug.Log("Bird hit the ground without hitting the board - resetting!");
             if (TurnManager.Instance != null) TurnManager.Instance.OnBirdHitGround();
         }
     }
@@ -257,19 +254,35 @@ public class SlingShotController : MonoBehaviour
         if (square != null)
         {
             hasHitBoard = true;
-            if (TurnManager.Instance != null) TurnManager.Instance.OnBirdHitBoard();
+            Debug.Log("Bird triggered tic-tac-toe square!");
+
+            if (TurnManager.Instance != null)
+            {
+                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+                square.OnSquareHit(currentPlayer);
+                TurnManager.Instance.OnBirdHitBoard(); // reset immediately
+            }
             return;
         }
 
         if (other.CompareTag("TicTacToeSquare"))
         {
             hasHitBoard = true;
-            if (TurnManager.Instance != null) TurnManager.Instance.OnBirdHitBoard();
+            Debug.Log("Bird triggered tic-tac-toe board (by tag)!");
+
+            TicTacToeSquare parentSquare = other.GetComponentInParent<TicTacToeSquare>();
+            if (parentSquare != null && TurnManager.Instance != null)
+            {
+                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+                parentSquare.OnSquareHit(currentPlayer);
+                TurnManager.Instance.OnBirdHitBoard(); // reset immediately
+            }
             return;
         }
 
         if (other.CompareTag("Ground") && !hasHitBoard)
         {
+            Debug.Log("Bird triggered the ground without hitting the board - resetting!");
             if (TurnManager.Instance != null) TurnManager.Instance.OnBirdHitGround();
         }
     }
@@ -290,7 +303,7 @@ public class SlingShotController : MonoBehaviour
         {
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
-            rb.isKinematic = true; // stay frozen until launched
+            rb.isKinematic = true; // freeze until aiming again
         }
 
         isDragging = false;
