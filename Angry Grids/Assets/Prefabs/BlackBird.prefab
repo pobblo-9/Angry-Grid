@@ -62,7 +62,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: f68e1364a86073247a1a60ab2e75fc41, type: 3}
       propertyPath: m_Name
-      value: BlackBird-1
+      value: BlackBird
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: f68e1364a86073247a1a60ab2e75fc41, type: 3}
       propertyPath: m_TagString
@@ -108,11 +108,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f8f2218dfb734e24db89b267a50e5392, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  leftPost: {fileID: 0}
-  rightPost: {fileID: 0}
-  leftBand: {fileID: 0}
-  rightBand: {fileID: 0}
-  trajectoryLine: {fileID: 0}
+  leftPost: {fileID: 9029277436082938675, guid: 6e6b7aad7288a164a9409375eae30ad6, type: 3}
+  rightPost: {fileID: 1938905081640385541, guid: 872f947c3119cc3419d6d0b7475277f4, type: 3}
+  leftBand: {fileID: 5071685587676804607, guid: 88c0e0e36e58a214f9beb533d4c1869c, type: 3}
+  rightBand: {fileID: 1802200385396546788, guid: 77090e2e9f9695e43bcc3fbfcae688fa, type: 3}
+  trajectoryLine: {fileID: 5807100836599893247, guid: 026d53312bf909c4baa4b57274609ee5, type: 3}
   forceMultiplier: 35
   maxStretch: 12
   minLaunch: 0.5
@@ -180,7 +180,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  GlobalObjectIdHash: 3063088449
+  GlobalObjectIdHash: 3881474548
   InScenePlacedSourceGlobalObjectIdHash: 0
   DeferredDespawnTick: 0
   Ownership: 1
