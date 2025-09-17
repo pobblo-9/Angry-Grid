@@ -28,4 +28,14 @@ public class SceneButton : MonoBehaviour
     {
 
     }
+
+    public void CreditsScene()
+    {
+        SceneManager.LoadScene("Credits");
+    }
+
+    public void MenuScene()
+    {
+        SceneManager.LoadScene("MenuScene");
+    }
 }
