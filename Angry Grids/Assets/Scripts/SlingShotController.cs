@@ -1,4 +1,4 @@
-// NetworkSlingShotController.cs - Updated to work with the fixed NetworkTurnManager
+// NetworkSlingShotController.cs - Fixed version with better turn validation
 using UnityEngine;
 using Unity.Netcode;
 
@@ -11,7 +11,7 @@ public class NetworkSlingShotController : NetworkBehaviour
     public LineRenderer rightBand;
     public LineRenderer trajectoryLine;
 
-    [Header("Launch Settings")]
+[Header("Launch Settings")]
     public float forceMultiplier = 100f;
     public float maxStretch = 5f;
     public float minLaunch = 0.5f;
@@ -383,45 +383,28 @@ public class NetworkSlingShotController : NetworkBehaviour
 
     void HandleBoardHit(NetworkTicTacToeSquare square)
     {
-        if (square == null || !isNetworkSpawned) return;
-
-        Debug.Log($"Player {playerNumber} bird handling board hit");
-
-        // Try to claim the square
-        if (IsSpawned && NetworkManager.Singleton != null)
+        if (NetworkTurnManager.Instance != null && square.IsSpawned)
         {
+            int currentPlayer = NetworkTurnManager.Instance.GetCurrentPlayer();
+
             try
             {
-                square.ClaimSquare(playerNumber);
+                square.OnSquareHitServerRpc(currentPlayer, NetworkManager.Singleton.LocalClientId);
+                if (NetworkTurnManager.Instance.IsSpawned)
+                {
+                    NetworkTurnManager.Instance.OnBirdHitBoardServerRpc(NetworkManager.Singleton.LocalClientId);
+                }
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"Failed to claim square: {e.Message}");
-            }
-        }
-
-        // Notify turn manager about the board hit
-        if (NetworkTurnManager.Instance != null && NetworkTurnManager.Instance.IsSpawned)
-        {
-            try
-            {
-                NetworkTurnManager.Instance.OnBirdHitBoardServerRpc(NetworkManager.Singleton.LocalClientId);
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"Failed to notify turn manager about board hit: {e.Message}");
+                Debug.LogError($"Failed to handle board hit: {e.Message}");
             }
         }
     }
 
     void HandleGroundHit()
     {
-        if (!isNetworkSpawned) return;
-
-        Debug.Log($"Player {playerNumber} bird hit ground - notifying turn manager");
-
-        // Notify turn manager about the ground hit
-        if (NetworkTurnManager.Instance != null && NetworkTurnManager.Instance.IsSpawned && NetworkManager.Singleton != null)
+        if (NetworkTurnManager.Instance != null && NetworkTurnManager.Instance.IsSpawned)
         {
             try
             {
@@ -429,7 +412,7 @@ public class NetworkSlingShotController : NetworkBehaviour
             }
             catch (System.Exception e)
             {
-                Debug.LogError($"Failed to notify turn manager about ground hit: {e.Message}");
+                Debug.LogError($"Failed to handle ground hit: {e.Message}");
             }
         }
     }
@@ -438,17 +421,12 @@ public class NetworkSlingShotController : NetworkBehaviour
     {
         isActive = active;
         Debug.Log($"Player {playerNumber} slingshot active: {active}");
-
-        // If deactivating, cancel any current aiming
-        if (!active && (currentStage != AimingStage.None || isDragging))
-        {
-            CancelAiming();
-        }
+        if (!active && isDragging) CancelAiming();
     }
 
     public void ResetBird()
     {
-        Debug.Log($"Resetting bird for Player {playerNumber}");
+        Debug.Log($"Resetting Player {playerNumber} bird");
 
         transform.position = originalPosition;
         transform.rotation = originalRotation;
@@ -476,12 +454,10 @@ public class NetworkSlingShotController : NetworkBehaviour
     public bool IsLaunched() => isLaunched;
     public bool HasHitBoard() => hasHitBoard;
     public int GetPlayerNumber() => playerNumber;
-    public bool IsActive() => isActive && isNetworkSpawned;
 
     private void CancelAiming()
     {
-        Debug.Log($"Canceling aim for Player {playerNumber}");
-
+        Debug.Log($"Canceling aiming for Player {playerNumber}");
         isDragging = false;
         currentStage = AimingStage.None;
         verticalOffset = 0f;
@@ -491,4 +467,5 @@ public class NetworkSlingShotController : NetworkBehaviour
         if (rightBand != null) rightBand.enabled = false;
         if (trajectoryLine != null) trajectoryLine.enabled = false;
     }
+
 }
