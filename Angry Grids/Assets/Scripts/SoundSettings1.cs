@@ -2,7 +2,7 @@ using UnityEngine;
 using UnityEngine.Audio;
 using UnityEngine.UI;
 
-public class SoundSettings :MonoBehaviour {
+public class SoundSettings1 :MonoBehaviour {
     [SerializeField] Slider soundSlider;
     [SerializeField] AudioMixer masterMixer;
 
@@ -18,7 +18,7 @@ public class SoundSettings :MonoBehaviour {
 
         RefreshSlider(_value);
         PlayerPrefs.SetFloat("SavedMasterVolume", _value);
-        masterMixer.SetFloat("MusicVolume", Mathf.Log10(_value / 100) * 20f);
+        masterMixer.SetFloat("MasterVolume", Mathf.Log10(_value / 100) * 20f);
     }
 
         public void SetVolumeFromSlider(){
