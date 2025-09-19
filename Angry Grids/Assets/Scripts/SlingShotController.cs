@@ -86,32 +86,37 @@ public class NetworkSlingShotController : NetworkBehaviour
         // Check if NetworkTurnManager exists and is ready
         if (NetworkTurnManager.Instance == null || !NetworkTurnManager.Instance.IsSpawned)
         {
+            Debug.Log($"NetworkTurnManager not ready for Player {playerNumber}");
             return false;
         }
 
         // Check if the game is active
         if (!NetworkTurnManager.Instance.IsGameActive())
         {
+            Debug.Log($"Game not active for Player {playerNumber}");
             return false;
         }
 
-        // Check if it's my turn
-        bool isMyTurn = NetworkTurnManager.Instance.IsMyTurn();
-
-        // Check if this slingshot belongs to the current player
+        // Get current player from turn manager
         int currentPlayer = NetworkTurnManager.Instance.GetCurrentPlayer();
+
+        // Check if this slingshot corresponds to the current player's turn
         bool isMySlingshotTurn = (currentPlayer == playerNumber);
 
-        // For the player to control this slingshot:
-        // 1. It must be their turn
-        // 2. This slingshot must belong to the current player
-        // 3. The network must be ready
-        bool canControl = isMyTurn && isMySlingshotTurn && NetworkManager.Singleton != null;
+        // Check if this client should be controlling this slingshot
+        int myPlayerNumber = NetworkTurnManager.Instance.GetMyPlayerNumber();
+        bool shouldControlThisSlingshot = (myPlayerNumber == playerNumber);
 
-        if (canControl)
-        {
-            Debug.Log($"Player {NetworkTurnManager.Instance.GetMyPlayerNumber()} can control slingshot {playerNumber} (Current turn: Player {currentPlayer})");
-        }
+        // The player can control this slingshot if:
+        // 1. It's this slingshot's turn (current player matches this slingshot's player number)
+        // 2. This client should control this slingshot (my player number matches this slingshot's player number)
+        // 3. The slingshot is marked as active
+        bool canControl = isMySlingshotTurn && shouldControlThisSlingshot && isActive;
+
+        Debug.Log($"CanHandleInput for Slingshot {playerNumber}: " +
+        $"CurrentPlayer={currentPlayer}, MyPlayer={myPlayerNumber}, " +
+        $"IsMySlingshotTurn={isMySlingshotTurn}, ShouldControl={shouldControlThisSlingshot}, " +
+        $"IsActive={isActive}, CanControl={canControl}");
 
         return canControl;
     }

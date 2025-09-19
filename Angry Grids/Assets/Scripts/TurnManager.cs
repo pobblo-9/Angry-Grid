@@ -87,6 +87,10 @@ public class NetworkTurnManager : NetworkBehaviour
         yield return new WaitForSeconds(1f);
         UpdateUI();
         SetPlayerTurn();
+
+        // Force camera sync for client
+        yield return new WaitForSeconds(0.5f);
+        SetCamerasForCurrentPlayer();
     }
 
     public override void OnNetworkDespawn()
@@ -142,31 +146,50 @@ public class NetworkTurnManager : NetworkBehaviour
 
         Debug.Log($"Setting turn - Current Player: {currentPlayer.Value}, My Player: {myPlayerNumber}");
 
-        // Enable/disable slingshots based on whose turn it is and ownership
-        bool isMyTurn = currentPlayer.Value == myPlayerNumber;
-
-        if (myPlayerNumber == 1 && player1Slingshot != null)
+        // Enable/disable slingshots - each player should only control their own slingshot when it's their turn
+        if (player1Slingshot != null)
         {
-            player1Slingshot.SetActive(isMyTurn);
-            Debug.Log($"Player 1 slingshot active: {isMyTurn}");
+            bool player1ShouldBeActive = (currentPlayer.Value == 1);
+            player1Slingshot.SetActive(player1ShouldBeActive);
+            Debug.Log($"Player 1 slingshot active: {player1ShouldBeActive}");
         }
 
-        if (myPlayerNumber == 2 && player2Slingshot != null)
+        if (player2Slingshot != null)
         {
-            player2Slingshot.SetActive(isMyTurn);
-            Debug.Log($"Player 2 slingshot active: {isMyTurn}");
+            bool player2ShouldBeActive = (currentPlayer.Value == 2);
+            player2Slingshot.SetActive(player2ShouldBeActive);
+            Debug.Log($"Player 2 slingshot active: {player2ShouldBeActive}");
         }
 
-        // Switch cameras based on current player (all clients see the same camera)
+        // Camera management - all clients should see the same camera based on current turn
+        SetCamerasForCurrentPlayer();
+    }
+
+    void SetCamerasForCurrentPlayer()
+    {
+        // Ensure only one camera is active at a time on all clients
         if (player1Camera != null)
         {
-            player1Camera.gameObject.SetActive(currentPlayer.Value == 1);
-            Debug.Log($"Player 1 camera active: {currentPlayer.Value == 1}");
+            bool shouldActivateP1Camera = (currentPlayer.Value == 1);
+            player1Camera.gameObject.SetActive(shouldActivateP1Camera);
+            Debug.Log($"Player 1 camera set to: {shouldActivateP1Camera}");
         }
+
         if (player2Camera != null)
         {
-            player2Camera.gameObject.SetActive(currentPlayer.Value == 2);
-            Debug.Log($"Player 2 camera active: {currentPlayer.Value == 2}");
+            bool shouldActivateP2Camera = (currentPlayer.Value == 2);
+            player2Camera.gameObject.SetActive(shouldActivateP2Camera);
+            Debug.Log($"Player 2 camera set to: {shouldActivateP2Camera}");
+        }
+
+        // Additional safety check - disable all other cameras
+        Camera[] allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+        foreach (Camera cam in allCameras)
+        {
+            if (cam != player1Camera && cam != player2Camera)
+            {
+                cam.gameObject.SetActive(false);
+            }
         }
     }
 
