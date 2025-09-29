@@ -82,26 +82,6 @@ public class SlingShotController : NetworkBehaviour
         }
     }
     
-    // Fallback click detection using OnMouseDown
-    void OnMouseDown()
-    {
-        Debug.Log($"OnMouseDown triggered for Player {playerNumber}");
-        if (!isActive || !isNetworkSpawned) 
-        {
-            Debug.Log($"OnMouseDown ignored - Active: {isActive}, Spawned: {isNetworkSpawned}");
-            return;
-        }
-        
-        if (CanHandleInput() && currentStage == AimingStage.None)
-        {
-            Debug.Log($"OnMouseDown accepted for Player {playerNumber} - starting aiming");
-            StartVerticalAiming();
-        }
-        else
-        {
-            Debug.Log($"OnMouseDown rejected for Player {playerNumber} - CanHandle: {CanHandleInput()}, Stage: {currentStage}");
-        }
-    }
 
     bool CanHandleInput()
     {
