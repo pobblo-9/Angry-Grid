@@ -1,21 +1,16 @@
-// TicTacToeSquare.cs - Fixed version (no longer NetworkBehaviour)
 using UnityEngine;
-using Unity.Netcode;
-using System;
 
 public class TicTacToeSquare : MonoBehaviour
 {
     [Header("Visual Feedback")]
     public Material defaultMaterial;
-    public Material player1Material;
-    public Material player2Material;
+    public Material player1Material; // Red material
+    public Material player2Material; // Blue material
 
     private int squareIndex;
     private int row, col;
     private TicTacToeBoard parentBoard;
     private Renderer squareRenderer;
-
-    // Regular variables (no longer networked)
     private int ownerPlayer = 0; // 0 = empty, 1 = player1, 2 = player2
     private bool hasBeenClaimed = false;
 
@@ -25,13 +20,6 @@ public class TicTacToeSquare : MonoBehaviour
         if (squareRenderer == null) squareRenderer = GetComponentInChildren<Renderer>();
     }
 
-    void Start()
-    {
-        // Initialize square visual
-        if (squareRenderer != null && defaultMaterial != null)
-            squareRenderer.material = defaultMaterial;
-    }
-
     public void Initialize(int index, int boardRow, int boardCol, TicTacToeBoard board)
     {
         squareIndex = index;
@@ -39,14 +27,17 @@ public class TicTacToeSquare : MonoBehaviour
         col = boardCol;
         parentBoard = board;
 
+        // Set default material
         if (squareRenderer != null && defaultMaterial != null)
             squareRenderer.material = defaultMaterial;
     }
 
+    // Called by the SlingShotController when the bird hits this square
     public void OnSquareHit(int player)
     {
         if (hasBeenClaimed) return;
 
+        // Prefer using the board's ClaimSquare method (it handles validation, visuals, and notifications)
         if (parentBoard != null)
         {
             if (parentBoard.ClaimSquare(squareIndex, player))
@@ -56,9 +47,10 @@ public class TicTacToeSquare : MonoBehaviour
         }
         else
         {
+            // fallback if parentBoard wasn't assigned
             SetPlayer(player);
             if (TurnManager.Instance != null)
-                TurnManager.Instance.OnSquareClaimedServerRpc(squareIndex, player);
+                TurnManager.Instance.OnSquareClaimed(squareIndex, player);
             hasBeenClaimed = true;
         }
     }
@@ -67,13 +59,8 @@ public class TicTacToeSquare : MonoBehaviour
     {
         if (other.CompareTag("Bird") && !hasBeenClaimed && TurnManager.Instance != null)
         {
-            // Only the owner of the bird should trigger this
-            SlingShotController birdController = other.GetComponent<SlingShotController>();
-            if (birdController != null && birdController.IsOwner)
-            {
-                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
-                OnSquareHit(currentPlayer);
-            }
+            int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+            OnSquareHit(currentPlayer);
         }
     }
 
@@ -81,19 +68,8 @@ public class TicTacToeSquare : MonoBehaviour
     {
         ownerPlayer = player;
         hasBeenClaimed = true;
-        UpdateVisual(player);
-    }
 
-    public void ClearSquareInternal()
-    {
-        ownerPlayer = 0;
-        hasBeenClaimed = false;
-        UpdateVisual(0);
-    }
-
-
-    void UpdateVisual(int player)
-    {
+        // Update visual
         if (squareRenderer != null)
         {
             Material targetMaterial = defaultMaterial;
@@ -109,9 +85,10 @@ public class TicTacToeSquare : MonoBehaviour
 
     public void ClearSquare()
     {
-        ClearSquareInternal();
+        ownerPlayer = 0;
+        hasBeenClaimed = false;
 
-        // Clear visual locally
+        // Reset visual
         if (squareRenderer != null && defaultMaterial != null)
             squareRenderer.material = defaultMaterial;
 
@@ -128,6 +105,4 @@ public class TicTacToeSquare : MonoBehaviour
 
     public bool IsEmpty() { return ownerPlayer == 0; }
     public int GetOwner() { return ownerPlayer; }
-    public int GetIndex() { return squareIndex; }
-
 }
