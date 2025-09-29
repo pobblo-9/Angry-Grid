@@ -102,6 +102,25 @@ public class CameraFollowBird : MonoBehaviour
         stopTimer = 0f;
         // Reset following state to let velocity trigger it naturally
         isFollowing = false;
+        
+        // Find the currently launched bird
+        UpdateBirdReference();
+    }
+    
+    // Update bird reference to follow the currently active bird
+    void UpdateBirdReference()
+    {
+        SlingShotController[] slingshots = FindObjectsByType<SlingShotController>(FindObjectsSortMode.None);
+        foreach (SlingShotController slingshot in slingshots)
+        {
+            if (slingshot.IsLaunched())
+            {
+                bird = slingshot.transform;
+                birdRb = slingshot.GetComponent<Rigidbody>();
+                Debug.Log($"Camera now following Player {slingshot.GetPlayerNumber()} bird");
+                break;
+            }
+        }
     }
 
     // Call this to manually return camera (e.g., when resetting bird)

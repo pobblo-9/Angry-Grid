@@ -33,7 +33,7 @@ public class NetworkGameLauncher : NetworkBehaviour
         // Initialize UI
         if (menuPanel != null) menuPanel.SetActive(true);
         if (lobbyPanel != null) lobbyPanel.SetActive(false);
-        if (gameplayObjects != null) gameplayObjects.SetActive(false);
+        if (gameplayObjects != null) gameplayObjects.SetActive(true);
         if (startGameButton != null) startGameButton.gameObject.SetActive(false);
         if (disconnectButton != null) disconnectButton.gameObject.SetActive(false);
 
@@ -221,12 +221,6 @@ public class NetworkGameLauncher : NetworkBehaviour
         gameStarted = true;
         UpdateStatusText("Starting game...");
 
-        // Notify the NetworkTurnManager to start the game
-        if (NetworkTurnManager.Instance != null)
-        {
-            NetworkTurnManager.Instance.StartGameFromLauncher();
-        }
-
         // Start the game for all clients
         if (IsSpawned)
         {
@@ -236,6 +230,179 @@ public class NetworkGameLauncher : NetworkBehaviour
         {
             // If not spawned as NetworkBehaviour, handle locally
             ShowGameplay();
+        }
+
+        // Notify TurnManager immediately on server
+        if (IsServer && TurnManager.Instance != null)
+        {
+            TurnManager.Instance.StartGameFromLauncher();
+        }
+    }
+    
+    void SpawnGameNetworkObjects()
+    {
+        if (!NetworkManager.Singleton.IsServer) return;
+        
+        Debug.Log("Spawning network game objects...");
+        
+        // Spawn ALL NetworkObjects that aren't already spawned (include inactive so gameplay objects hidden in UI are found)
+        NetworkObject[] allNetworkObjects = FindObjectsByType<NetworkObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        Debug.Log($"Total NetworkObjects in scene (incl. inactive): {allNetworkObjects.Length}");
+        
+        for (int i = 0; i < allNetworkObjects.Length; i++)
+        {
+            NetworkObject netObj = allNetworkObjects[i];
+            Debug.Log($"NetworkObject {i}: {netObj.gameObject.name}, Active: {netObj.gameObject.activeInHierarchy}, IsSpawned: {netObj.IsSpawned}");
+            
+            if (!netObj.IsSpawned)
+            {
+                try
+                {
+                    if (!netObj.gameObject.activeInHierarchy)
+                    {
+                        Debug.Log($"Activating {netObj.gameObject.name} to allow network spawn");
+                        netObj.gameObject.SetActive(true);
+                    }
+                    Debug.Log($"Spawning NetworkObject: {netObj.gameObject.name}");
+                    // For scene objects, regular Spawn is fine once active
+                    netObj.Spawn(destroyWithScene: true);
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogWarning($"Could not spawn {netObj.gameObject.name}: {e.Message}");
+                }
+            }
+            else
+            {
+                Debug.Log($"NetworkObject {netObj.gameObject.name} already spawned");
+            }
+        }
+        
+        // Find and spawn TurnManager if not already spawned
+        TurnManager turnManager = FindFirstObjectByType<TurnManager>();
+        if (turnManager != null)
+        {
+            NetworkObject turnManagerNetObj = turnManager.GetComponent<NetworkObject>();
+            if (turnManagerNetObj != null && !turnManagerNetObj.IsSpawned)
+            {
+                if (!turnManagerNetObj.gameObject.activeInHierarchy)
+                    turnManagerNetObj.gameObject.SetActive(true);
+                Debug.Log("Spawning TurnManager");
+                turnManagerNetObj.Spawn();
+            }
+        }
+        
+        // Find and spawn all SlingShotControllers (include inactive so hidden ones are found)
+        Debug.Log("Looking for SlingShotControllers in scene...");
+        SlingShotController[] slingshots = FindObjectsByType<SlingShotController>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        Debug.Log($"Found {slingshots.Length} SlingShotController(s) in scene (incl. inactive)");
+        
+        // If no SlingShotControllers found, let's search more broadly (including inactive)
+        if (slingshots.Length == 0)
+        {
+            Debug.Log("No SlingShotControllers found! Searching for any GameObject with that script...");
+            
+            // Search all GameObjects for SlingShotController scripts
+            GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            int foundScripts = 0;
+            foreach (GameObject obj in allObjects)
+            {
+                SlingShotController script = obj.GetComponent<SlingShotController>();
+                if (script != null)
+                {
+                    foundScripts++;
+                    Debug.Log($"Found SlingShotController script on: {obj.name}, Player: {script.GetPlayerNumber()}, HasNetworkObject: {obj.GetComponent<NetworkObject>() != null}");
+                }
+            }
+            Debug.Log($"Total SlingShotController scripts found: {foundScripts}");
+        }
+        
+        for (int i = 0; i < slingshots.Length; i++)
+        {
+            SlingShotController slingshot = slingshots[i];
+            Debug.Log($"Checking SlingShotController {i}: {slingshot.name}, Player: {slingshot.GetPlayerNumber()}");
+            
+            NetworkObject slingshotNetObj = slingshot.GetComponent<NetworkObject>();
+            if (slingshotNetObj != null)
+            {
+                Debug.Log($"SlingShotController {slingshot.name} has NetworkObject, Active: {slingshotNetObj.gameObject.activeInHierarchy}, IsSpawned: {slingshotNetObj.IsSpawned}");
+                if (!slingshotNetObj.IsSpawned)
+                {
+                    Debug.Log($"Attempting to spawn SlingShotController for Player {slingshot.GetPlayerNumber()}");
+                    try
+                    {
+                        if (!slingshotNetObj.gameObject.activeInHierarchy)
+                        {
+                            Debug.Log($"Activating slingshot {slingshot.name} to allow network spawn");
+                            slingshotNetObj.gameObject.SetActive(true);
+                        }
+                        slingshotNetObj.Spawn();
+                        Debug.Log($"Successfully spawned SlingShotController for Player {slingshot.GetPlayerNumber()}");
+                    }
+                    catch (System.Exception e)
+                    {
+                        Debug.LogError($"Failed to spawn SlingShotController: {e.Message}");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"SlingShotController {slingshot.name} already spawned");
+                }
+            }
+            else
+            {
+                Debug.LogWarning($"SlingShotController {slingshot.name} has no NetworkObject component!");
+            }
+        }
+        
+        // Find and spawn TicTacToeBoard (include inactive)
+        TicTacToeBoard board = null;
+        var boards = FindObjectsByType<TicTacToeBoard>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        if (boards != null && boards.Length > 0)
+            board = boards[0];
+        if (board != null)
+        {
+            NetworkObject boardNetObj = board.GetComponent<NetworkObject>();
+            if (boardNetObj != null && !boardNetObj.IsSpawned)
+            {
+                if (!boardNetObj.gameObject.activeInHierarchy)
+                    boardNetObj.gameObject.SetActive(true);
+                Debug.Log("Spawning TicTacToeBoard");
+                boardNetObj.Spawn();
+            }
+        }
+        
+        // Find and spawn all TicTacToeSquares (include inactive, if any are networked)
+        TicTacToeSquare[] squares = FindObjectsByType<TicTacToeSquare>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        foreach (TicTacToeSquare square in squares)
+        {
+            NetworkObject squareNetObj = square.GetComponent<NetworkObject>();
+            if (squareNetObj != null && !squareNetObj.IsSpawned)
+            {
+                if (!squareNetObj.gameObject.activeInHierarchy)
+                    squareNetObj.gameObject.SetActive(true);
+                Debug.Log($"Spawning TicTacToeSquare: {square.name}");
+                squareNetObj.Spawn();
+            }
+        }
+        
+        // Wait a frame then notify TurnManager to start
+        StartCoroutine(NotifyTurnManagerAfterSpawn());
+    }
+    
+    System.Collections.IEnumerator NotifyTurnManagerAfterSpawn()
+    {
+        yield return null; // Wait one frame for spawning to complete
+        
+        // Notify the TurnManager to start the game
+        if (TurnManager.Instance != null)
+        {
+            Debug.Log("Notifying TurnManager to start game");
+            TurnManager.Instance.StartGameFromLauncher();
+        }
+        else
+        {
+            Debug.LogWarning("TurnManager.Instance is null after spawning!");
         }
     }
 
@@ -364,5 +531,7 @@ public class NetworkGameLauncher : NetworkBehaviour
 
         UpdateStatusText("Disconnected. Ready to connect...");
     }
+
+
 
 }

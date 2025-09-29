@@ -4,15 +4,15 @@ using UnityEngine.UI;
 using Unity.Netcode;
 using System.Collections;
 
-public class NetworkTurnManager : NetworkBehaviour
+public class TurnManager : NetworkBehaviour
 {
     [Header("Players")]
-    public NetworkSlingShotController player1Slingshot;
-    public NetworkSlingShotController player2Slingshot;
+    public SlingShotController player1Slingshot;
+    public SlingShotController player2Slingshot;
     public Camera player1Camera;
     public Camera player2Camera;
 
-[Header("UI")]
+    [Header("UI")]
     public Text turnIndicator;
     public GameObject gameOverPanel;
     public Text gameOverText;
@@ -27,29 +27,31 @@ public class NetworkTurnManager : NetworkBehaviour
     private NetworkVariable<bool> gameActive = new NetworkVariable<bool>(true);
     private NetworkVariable<bool> waitingForBird = new NetworkVariable<bool>(false);
 
-    private NetworkTicTacToeBoard gameBoard;
+    private TicTacToeBoard gameBoard;
     private int myPlayerNumber = 0;
     private bool isInitialized = false;
     private bool gameStarted = false;
 
-    public static NetworkTurnManager Instance { get; private set; }
+    public static TurnManager Instance { get; private set; }
 
     void Awake()
     {
         if (Instance != null && Instance != this)
         {
+            Debug.Log($"Duplicate TurnManager found, destroying {gameObject.name}");
             Destroy(gameObject);
             return;
         }
         Instance = this;
-        DontDestroyOnLoad(gameObject);
+        Debug.Log($"TurnManager Instance set: {gameObject.name}");
+        // Don't use DontDestroyOnLoad with NetworkBehaviour - let NetworkManager handle lifecycle
     }
 
     public override void OnNetworkSpawn()
     {
         Debug.Log($"NetworkTurnManager spawned - IsHost: {IsHost}, ClientId: {NetworkManager.Singleton.LocalClientId}");
 
-        gameBoard = FindFirstObjectByType<NetworkTicTacToeBoard>();
+        gameBoard = FindFirstObjectByType<TicTacToeBoard>();
 
         // Fixed player number assignment
         if (NetworkManager.Singleton.IsHost)
@@ -285,7 +287,7 @@ public class NetworkTurnManager : NetworkBehaviour
     [ClientRpc]
     void ResetCurrentBirdClientRpc()
     {
-        NetworkSlingShotController currentSlingshot = (currentPlayer.Value == 1) ? player1Slingshot : player2Slingshot;
+        SlingShotController currentSlingshot = (currentPlayer.Value == 1) ? player1Slingshot : player2Slingshot;
         if (currentSlingshot != null)
         {
             currentSlingshot.ResetBird();
@@ -296,7 +298,7 @@ public class NetworkTurnManager : NetworkBehaviour
     {
         yield return new WaitForSeconds(1f);
 
-        NetworkSlingShotController currentSlingshot = (currentPlayer.Value == 1) ? player1Slingshot : player2Slingshot;
+        SlingShotController currentSlingshot = (currentPlayer.Value == 1) ? player1Slingshot : player2Slingshot;
         if (currentSlingshot == null)
         {
             waitingForBird.Value = false;

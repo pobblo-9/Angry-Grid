@@ -1,9 +1,9 @@
-// NetworkTicTacToeSquare.cs - Fixed version
+// TicTacToeSquare.cs - Fixed version (no longer NetworkBehaviour)
 using UnityEngine;
 using Unity.Netcode;
 using System;
 
-public class NetworkTicTacToeSquare : NetworkBehaviour
+public class TicTacToeSquare : MonoBehaviour
 {
     [Header("Visual Feedback")]
     public Material defaultMaterial;
@@ -12,12 +12,12 @@ public class NetworkTicTacToeSquare : NetworkBehaviour
 
     private int squareIndex;
     private int row, col;
-    private NetworkTicTacToeBoard parentBoard;
+    private TicTacToeBoard parentBoard;
     private Renderer squareRenderer;
 
-    // Fixed NetworkVariable declarations
-    private NetworkVariable<int> ownerPlayer = new NetworkVariable<int>(0); // 0 = empty, 1 = player1, 2 = player2
-    private NetworkVariable<bool> hasBeenClaimed = new NetworkVariable<bool>(false);
+    // Regular variables (no longer networked)
+    private int ownerPlayer = 0; // 0 = empty, 1 = player1, 2 = player2
+    private bool hasBeenClaimed = false;
 
     void Awake()
     {
@@ -25,14 +25,14 @@ public class NetworkTicTacToeSquare : NetworkBehaviour
         if (squareRenderer == null) squareRenderer = GetComponentInChildren<Renderer>();
     }
 
-    public override void OnNetworkSpawn()
+    void Start()
     {
-        // Fixed event subscription
-        ownerPlayer.OnValueChanged += OnOwnerPlayerChanged;
-        hasBeenClaimed.OnValueChanged += OnClaimedStatusChanged;
+        // Initialize square visual
+        if (squareRenderer != null && defaultMaterial != null)
+            squareRenderer.material = defaultMaterial;
     }
 
-    public void Initialize(int index, int boardRow, int boardCol, NetworkTicTacToeBoard board)
+    public void Initialize(int index, int boardRow, int boardCol, TicTacToeBoard board)
     {
         squareIndex = index;
         row = boardRow;
@@ -43,66 +43,54 @@ public class NetworkTicTacToeSquare : NetworkBehaviour
             squareRenderer.material = defaultMaterial;
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void OnSquareHitServerRpc(int player, ulong clientId)
+    public void OnSquareHit(int player)
     {
-        if (hasBeenClaimed.Value) return;
+        if (hasBeenClaimed) return;
 
         if (parentBoard != null)
         {
             if (parentBoard.ClaimSquare(squareIndex, player))
             {
-                hasBeenClaimed.Value = true;
+                hasBeenClaimed = true;
             }
         }
         else
         {
-            SetPlayerServerRpc(player);
-            if (NetworkTurnManager.Instance != null)
-                NetworkTurnManager.Instance.OnSquareClaimedServerRpc(squareIndex, player);
-            hasBeenClaimed.Value = true;
+            SetPlayer(player);
+            if (TurnManager.Instance != null)
+                TurnManager.Instance.OnSquareClaimedServerRpc(squareIndex, player);
+            hasBeenClaimed = true;
         }
     }
 
     void OnTriggerEnter(Collider other)
     {
-        if (other.CompareTag("Bird") && !hasBeenClaimed.Value && NetworkTurnManager.Instance != null)
+        if (other.CompareTag("Bird") && !hasBeenClaimed && TurnManager.Instance != null)
         {
             // Only the owner of the bird should trigger this
-            NetworkSlingShotController birdController = other.GetComponent<NetworkSlingShotController>();
+            SlingShotController birdController = other.GetComponent<SlingShotController>();
             if (birdController != null && birdController.IsOwner)
             {
-                int currentPlayer = NetworkTurnManager.Instance.GetCurrentPlayer();
-                OnSquareHitServerRpc(currentPlayer, NetworkManager.Singleton.LocalClientId);
+                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+                OnSquareHit(currentPlayer);
             }
         }
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void SetPlayerServerRpc(int player)
+    public void SetPlayer(int player)
     {
-        ownerPlayer.Value = player;
-        hasBeenClaimed.Value = true;
+        ownerPlayer = player;
+        hasBeenClaimed = true;
+        UpdateVisual(player);
     }
 
-    [ServerRpc(RequireOwnership = false)]
-    public void ClearSquareServerRpc()
+    public void ClearSquareInternal()
     {
-        ownerPlayer.Value = 0;
-        hasBeenClaimed.Value = false;
+        ownerPlayer = 0;
+        hasBeenClaimed = false;
+        UpdateVisual(0);
     }
 
-    // Fixed callback signature
-    void OnOwnerPlayerChanged(int previousValue, int newValue)
-    {
-        UpdateVisual(newValue);
-    }
-
-    // Fixed callback signature
-    void OnClaimedStatusChanged(bool previousValue, bool newValue)
-    {
-        // Handle claimed status change if needed
-    }
 
     void UpdateVisual(int player)
     {
@@ -121,10 +109,7 @@ public class NetworkTicTacToeSquare : NetworkBehaviour
 
     public void ClearSquare()
     {
-        if (IsServer)
-        {
-            ClearSquareServerRpc();
-        }
+        ClearSquareInternal();
 
         // Clear visual locally
         if (squareRenderer != null && defaultMaterial != null)
@@ -141,11 +126,8 @@ public class NetworkTicTacToeSquare : NetworkBehaviour
         }
     }
 
-    public bool IsEmpty() { return ownerPlayer.Value == 0; }
-    public int GetOwner() { return ownerPlayer.Value; }
+    public bool IsEmpty() { return ownerPlayer == 0; }
+    public int GetOwner() { return ownerPlayer; }
+    public int GetIndex() { return squareIndex; }
 
-    internal void ClaimSquare(int playerNumber)
-    {
-        throw new NotImplementedException();
-    }
 }

@@ -2,7 +2,7 @@
 using UnityEngine;
 using Unity.Netcode;
 
-public class NetworkSlingShotController : NetworkBehaviour
+public class SlingShotController : NetworkBehaviour
 {
     [Header("Slingshot Components")]
     public Transform leftPost;
@@ -60,7 +60,8 @@ public class NetworkSlingShotController : NetworkBehaviour
     public override void OnNetworkSpawn()
     {
         isNetworkSpawned = true;
-        Debug.Log($"NetworkSlingShotController spawned - Player: {playerNumber}, IsOwner: {IsOwner}, ClientId: {OwnerClientId}");
+        Debug.Log($"SlingShotController Player {playerNumber} NETWORK SPAWNED! IsOwner: {IsOwner}, ClientId: {OwnerClientId}, GameObject: {gameObject.name}");
+        Debug.Log($"Player {playerNumber} slingshot is now network ready!");
     }
 
     public override void OnNetworkDespawn()
@@ -80,58 +81,122 @@ public class NetworkSlingShotController : NetworkBehaviour
             HandleInput();
         }
     }
+    
+    // Fallback click detection using OnMouseDown
+    void OnMouseDown()
+    {
+        Debug.Log($"OnMouseDown triggered for Player {playerNumber}");
+        if (!isActive || !isNetworkSpawned) 
+        {
+            Debug.Log($"OnMouseDown ignored - Active: {isActive}, Spawned: {isNetworkSpawned}");
+            return;
+        }
+        
+        if (CanHandleInput() && currentStage == AimingStage.None)
+        {
+            Debug.Log($"OnMouseDown accepted for Player {playerNumber} - starting aiming");
+            StartVerticalAiming();
+        }
+        else
+        {
+            Debug.Log($"OnMouseDown rejected for Player {playerNumber} - CanHandle: {CanHandleInput()}, Stage: {currentStage}");
+        }
+    }
 
     bool CanHandleInput()
     {
-        // Check if NetworkTurnManager exists and is ready
-        if (NetworkTurnManager.Instance == null || !NetworkTurnManager.Instance.IsSpawned)
+        // Simplified for debugging - let's see if the basic mechanics work first
+        Debug.Log($"CanHandleInput check for Player {playerNumber}: NetworkSpawned={isNetworkSpawned}, Active={isActive}");
+        
+        // Basic checks first
+        if (!isActive)
         {
-            Debug.Log($"NetworkTurnManager not ready for Player {playerNumber}");
+            Debug.Log($"Slingshot {playerNumber} is not active");
+            return false;
+        }
+        
+        // TEMPORARY: Skip network spawning check for testing
+        // Uncomment below for proper network checking later
+        /*
+        if (!isNetworkSpawned)
+        {
+            Debug.Log($"Slingshot {playerNumber} is not network spawned");
+            return false;
+        }
+        */
+        Debug.Log($"Network spawning check bypassed - testing Player {playerNumber}");
+        
+        // Check if TurnManager exists
+        if (TurnManager.Instance == null)
+        {
+            Debug.Log($"TurnManager.Instance is null for Player {playerNumber}");
+            return false;
+        }
+        
+        if (!TurnManager.Instance.IsSpawned)
+        {
+            Debug.Log($"TurnManager not spawned for Player {playerNumber}");
             return false;
         }
 
         // Check if the game is active
-        if (!NetworkTurnManager.Instance.IsGameActive())
+        if (!TurnManager.Instance.IsGameActive())
         {
             Debug.Log($"Game not active for Player {playerNumber}");
             return false;
         }
 
         // Get current player from turn manager
-        int currentPlayer = NetworkTurnManager.Instance.GetCurrentPlayer();
-
-        // Check if this slingshot corresponds to the current player's turn
-        bool isMySlingshotTurn = (currentPlayer == playerNumber);
-
-        // Check if this client should be controlling this slingshot
-        int myPlayerNumber = NetworkTurnManager.Instance.GetMyPlayerNumber();
-        bool shouldControlThisSlingshot = (myPlayerNumber == playerNumber);
-
-        // The player can control this slingshot if:
-        // 1. It's this slingshot's turn (current player matches this slingshot's player number)
-        // 2. This client should control this slingshot (my player number matches this slingshot's player number)
-        // 3. The slingshot is marked as active
-        bool canControl = isMySlingshotTurn && shouldControlThisSlingshot && isActive;
-
-        Debug.Log($"CanHandleInput for Slingshot {playerNumber}: " +
-        $"CurrentPlayer={currentPlayer}, MyPlayer={myPlayerNumber}, " +
-        $"IsMySlingshotTurn={isMySlingshotTurn}, ShouldControl={shouldControlThisSlingshot}, " +
-        $"IsActive={isActive}, CanControl={canControl}");
-
-        return canControl;
+        int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+        int myPlayerNumber = TurnManager.Instance.GetMyPlayerNumber();
+        
+        // Simplified logic: just check if it's my turn
+        bool isMyTurn = (currentPlayer == playerNumber && myPlayerNumber == playerNumber);
+        
+        Debug.Log($"Turn check for Player {playerNumber}: Current={currentPlayer}, My={myPlayerNumber}, IsMyTurn={isMyTurn}");
+        
+        return isMyTurn;
     }
 
     void HandleInput()
     {
         if (Input.GetMouseButtonDown(0))
         {
+            Debug.Log($"Mouse clicked! Player {playerNumber}, Stage: {currentStage}");
+            
             if (currentStage == AimingStage.None)
             {
-                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-                if (Physics.Raycast(ray, out RaycastHit hit) && hit.collider.gameObject == gameObject)
+                Camera currentCamera = Camera.main;
+                if (currentCamera == null) currentCamera = FindFirstObjectByType<Camera>();
+                
+                if (currentCamera != null)
                 {
-                    Debug.Log($"Player {playerNumber} bird clicked!");
-                    StartVerticalAiming();
+                    Ray ray = currentCamera.ScreenPointToRay(Input.mousePosition);
+                    Debug.Log($"Casting ray from camera for Player {playerNumber}. Camera: {currentCamera.name}");
+                    
+                    if (Physics.Raycast(ray, out RaycastHit hit))
+                    {
+                        Debug.Log($"Raycast hit: {hit.collider.gameObject.name}, Expected root: {gameObject.name}");
+                        // Accept hit if it is this object or any of its children
+                        bool hitThisBird = hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform);
+                        if (hitThisBird)
+                        {
+                            Debug.Log($"Player {playerNumber} bird clicked (hit accepted)!");
+                            StartVerticalAiming();
+                        }
+                        else
+                        {
+                            Debug.Log($"Hit different object: {hit.collider.gameObject.name}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log($"Raycast missed everything for Player {playerNumber}");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"No camera found for Player {playerNumber} input!");
                 }
             }
             else if (currentStage == AimingStage.Vertical)
@@ -187,7 +252,12 @@ public class NetworkSlingShotController : NetworkBehaviour
 
     void UpdateHorizontalAiming()
     {
-        Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+        Camera currentCamera = Camera.main;
+        if (currentCamera == null) currentCamera = FindFirstObjectByType<Camera>();
+        
+        if (currentCamera == null) return;
+        
+        Ray mouseRay = currentCamera.ScreenPointToRay(Input.mousePosition);
         Plane dragPlane = new Plane(Vector3.up, startPos);
         Vector3 worldMouse = startPos;
 
@@ -244,11 +314,11 @@ public class NetworkSlingShotController : NetworkBehaviour
         ExecuteLaunchClientRpc(pullVector);
 
         // Notify turn manager
-        if (NetworkTurnManager.Instance != null && NetworkTurnManager.Instance.IsSpawned)
+        if (TurnManager.Instance != null && TurnManager.Instance.IsSpawned)
         {
             try
             {
-                NetworkTurnManager.Instance.OnBirdLaunchedServerRpc(clientId);
+                TurnManager.Instance.OnBirdLaunchedServerRpc(clientId);
             }
             catch (System.Exception e)
             {
@@ -326,7 +396,7 @@ public class NetworkSlingShotController : NetworkBehaviour
     {
         if (!isLaunched || !isNetworkSpawned) return;
 
-        NetworkTicTacToeSquare square = collision.gameObject.GetComponent<NetworkTicTacToeSquare>();
+        TicTacToeSquare square = collision.gameObject.GetComponent<TicTacToeSquare>();
         if (square != null)
         {
             hasHitBoard = true;
@@ -339,7 +409,7 @@ public class NetworkSlingShotController : NetworkBehaviour
         {
             hasHitBoard = true;
             Debug.Log($"Player {playerNumber} bird hit tic-tac-toe board (by tag)!");
-            NetworkTicTacToeSquare parentSquare = collision.gameObject.GetComponentInParent<NetworkTicTacToeSquare>();
+            TicTacToeSquare parentSquare = collision.gameObject.GetComponentInParent<TicTacToeSquare>();
             if (parentSquare != null)
             {
                 HandleBoardHit(parentSquare);
@@ -358,7 +428,7 @@ public class NetworkSlingShotController : NetworkBehaviour
     {
         if (!isLaunched || !isNetworkSpawned) return;
 
-        NetworkTicTacToeSquare square = other.GetComponent<NetworkTicTacToeSquare>();
+        TicTacToeSquare square = other.GetComponent<TicTacToeSquare>();
         if (square != null)
         {
             hasHitBoard = true;
@@ -371,7 +441,7 @@ public class NetworkSlingShotController : NetworkBehaviour
         {
             hasHitBoard = true;
             Debug.Log($"Player {playerNumber} bird triggered tic-tac-toe board (by tag)!");
-            NetworkTicTacToeSquare parentSquare = other.GetComponentInParent<NetworkTicTacToeSquare>();
+            TicTacToeSquare parentSquare = other.GetComponentInParent<TicTacToeSquare>();
             if (parentSquare != null)
             {
                 HandleBoardHit(parentSquare);
@@ -386,34 +456,46 @@ public class NetworkSlingShotController : NetworkBehaviour
         }
     }
 
-    void HandleBoardHit(NetworkTicTacToeSquare square)
+    void HandleBoardHit(TicTacToeSquare square)
     {
-        if (NetworkTurnManager.Instance != null && square.IsSpawned)
+        try
         {
-            int currentPlayer = NetworkTurnManager.Instance.GetCurrentPlayer();
-
-            try
+            if (TurnManager.Instance != null)
             {
-                square.OnSquareHitServerRpc(currentPlayer, NetworkManager.Singleton.LocalClientId);
-                if (NetworkTurnManager.Instance.IsSpawned)
+                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+
+                // Prefer server-authoritative claim via board ServerRpc
+                TicTacToeBoard board = FindFirstObjectByType<TicTacToeBoard>();
+                if (board != null && board.IsSpawned && square != null)
                 {
-                    NetworkTurnManager.Instance.OnBirdHitBoardServerRpc(NetworkManager.Singleton.LocalClientId);
+                    int index = square.GetIndex();
+                    board.RequestClaimSquareServerRpc(index, currentPlayer);
+                }
+                else if (square != null)
+                {
+                    // Fallback: local update
+                    square.OnSquareHit(currentPlayer);
+                }
+
+                if (TurnManager.Instance.IsSpawned)
+                {
+                    TurnManager.Instance.OnBirdHitBoardServerRpc(NetworkManager.Singleton.LocalClientId);
                 }
             }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"Failed to handle board hit: {e.Message}");
-            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Failed to handle board hit: {e.Message}");
         }
     }
 
     void HandleGroundHit()
     {
-        if (NetworkTurnManager.Instance != null && NetworkTurnManager.Instance.IsSpawned)
+        if (TurnManager.Instance != null && TurnManager.Instance.IsSpawned)
         {
             try
             {
-                NetworkTurnManager.Instance.OnBirdHitGroundServerRpc(NetworkManager.Singleton.LocalClientId);
+                TurnManager.Instance.OnBirdHitGroundServerRpc(NetworkManager.Singleton.LocalClientId);
             }
             catch (System.Exception e)
             {

@@ -3,9 +3,9 @@ using UnityEngine;
 using Unity.Netcode;
 using UnityEngine.Rendering;
 
-public class NetworkTicTacToeBoard : NetworkBehaviour
+public class TicTacToeBoard : NetworkBehaviour
 {
-    public NetworkTicTacToeSquare[] squares = new NetworkTicTacToeSquare[9];
+    public TicTacToeSquare[] squares = new TicTacToeSquare[9];
     public GameObject player1Symbol;
     public GameObject player2Symbol;
 
@@ -63,12 +63,15 @@ public class NetworkTicTacToeBoard : NetworkBehaviour
 
         if (IsServer)
         {
-            squares[squareIndex].SetPlayerServerRpc(player);
+            // Update square ownership on server and all clients
+            if (squares[squareIndex] != null)
+                squares[squareIndex].SetPlayer(player);
+            UpdateSquareOwnerClientRpc(squareIndex, player);
             SpawnSymbolClientRpc(squareIndex, player);
         }
 
-        if (NetworkTurnManager.Instance != null)
-            NetworkTurnManager.Instance.OnSquareClaimedServerRpc(squareIndex, player);
+        if (TurnManager.Instance != null)
+            TurnManager.Instance.OnSquareClaimedServerRpc(squareIndex, player);
 
         return true;
     }
@@ -84,6 +87,21 @@ public class NetworkTicTacToeBoard : NetworkBehaviour
             symbol.transform.localRotation = Quaternion.identity;
             symbol.transform.localScale = Vector3.one * 0.8f;
         }
+    }
+
+    [ClientRpc]
+    void UpdateSquareOwnerClientRpc(int squareIndex, int player)
+    {
+        if (squares != null && squareIndex >= 0 && squareIndex < squares.Length && squares[squareIndex] != null)
+        {
+            squares[squareIndex].SetPlayer(player);
+        }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestClaimSquareServerRpc(int squareIndex, int player)
+    {
+        ClaimSquare(squareIndex, player);
     }
 
     public bool CheckWin(int player)
