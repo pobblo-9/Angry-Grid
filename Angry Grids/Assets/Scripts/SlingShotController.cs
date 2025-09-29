@@ -115,16 +115,12 @@ public class SlingShotController : NetworkBehaviour
             return false;
         }
         
-        // TEMPORARY: Skip network spawning check for testing
-        // Uncomment below for proper network checking later
-        /*
+        // Ensure this slingshot has been network spawned
         if (!isNetworkSpawned)
         {
             Debug.Log($"Slingshot {playerNumber} is not network spawned");
             return false;
         }
-        */
-        Debug.Log($"Network spawning check bypassed - testing Player {playerNumber}");
         
         // Check if TurnManager exists
         if (TurnManager.Instance == null)

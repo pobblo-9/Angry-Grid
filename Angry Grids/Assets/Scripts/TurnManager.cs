@@ -144,7 +144,8 @@ public class TurnManager : NetworkBehaviour
 
     void SetPlayerTurn()
     {
-        if (!isInitialized || !gameStarted) return;
+        if (!isInitialized) return;
+        if (!gameActive.Value) return;
 
         Debug.Log($"Setting turn - Current Player: {currentPlayer.Value}, My Player: {myPlayerNumber}");
 
@@ -428,7 +429,7 @@ public class TurnManager : NetworkBehaviour
 
     public bool IsGameActive()
     {
-        return isInitialized && gameActive.Value && gameStarted;
+        return isInitialized && gameActive.Value;
     }
 
     // Network variable change callbacks
@@ -442,6 +443,14 @@ public class TurnManager : NetworkBehaviour
     void OnGameActiveChanged(bool previousValue, bool newValue)
     {
         Debug.Log($"Game active changed to {newValue}");
+        // Keep local state in sync for clients too
+        gameStarted = newValue;
+        // When game becomes active on client, (re)apply turn state and cameras
+        if (newValue)
+        {
+            SetPlayerTurn();
+            SetCamerasForCurrentPlayer();
+        }
         UpdateUI();
     }
 
