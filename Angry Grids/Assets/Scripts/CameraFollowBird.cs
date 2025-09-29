@@ -104,6 +104,15 @@ public class CameraFollowBird : MonoBehaviour
         isFollowing = false;
     }
 
+    // Allow rebinding to a new bird at runtime (e.g., when swapping prefabs)
+    public void SetBird(Transform newBird)
+    {
+        bird = newBird;
+        birdRb = (bird != null) ? bird.GetComponent<Rigidbody>() : null;
+        isFollowing = false;
+        stopTimer = 0f;
+    }
+
     // Call this to manually return camera (e.g., when resetting bird)
     public void ReturnToOriginal()
     {

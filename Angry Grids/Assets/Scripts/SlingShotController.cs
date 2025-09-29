@@ -35,6 +35,10 @@ public class SlingShotController : MonoBehaviour
     private float verticalOffset = 0f;
     private float initialMouseY;
 
+    [Header("Audio")]
+    [SerializeField] private AudioSource dragAudioSource;
+    [SerializeField] private AudioSource releaseAudioSource;
+
     void Start()
     {
         rb = GetComponent<Rigidbody>();
@@ -50,6 +54,7 @@ public class SlingShotController : MonoBehaviour
 
         // ensure bird starts kinematic until player starts aiming
         if (rb != null) rb.isKinematic = true;
+
     }
 
     void Update()
@@ -97,6 +102,12 @@ public class SlingShotController : MonoBehaviour
         if (leftBand != null) leftBand.enabled = true;
         if (rightBand != null) rightBand.enabled = true;
         if (trajectoryLine != null) trajectoryLine.enabled = true;
+
+        // Play drag sound once when starting to aim
+        if (dragAudioSource != null)
+        {
+            dragAudioSource.Play();
+        }
 
         initialMouseY = Input.mousePosition.y;
         verticalOffset = 0f;
@@ -148,6 +159,18 @@ public class SlingShotController : MonoBehaviour
         hasHitBoard = false;
         if (rb != null) rb.isKinematic = false;
         currentStage = AimingStage.None;
+
+        // Stop drag sound if it's looping
+        if (dragAudioSource != null && dragAudioSource.isPlaying)
+        {
+            dragAudioSource.Stop();
+        }
+
+        // Play release sound when letting go
+        if (releaseAudioSource != null)
+        {
+            releaseAudioSource.Play();
+        }
 
         Vector3 pullVector = startPos - transform.position;
 
@@ -327,6 +350,12 @@ public class SlingShotController : MonoBehaviour
         currentStage = AimingStage.None;
         verticalOffset = 0f;
         transform.position = startPos;
+
+        // Stop any ongoing drag audio
+        if (dragAudioSource != null && dragAudioSource.isPlaying)
+        {
+            dragAudioSource.Stop();
+        }
 
         if (leftBand != null) leftBand.enabled = false;
         if (rightBand != null) rightBand.enabled = false;
