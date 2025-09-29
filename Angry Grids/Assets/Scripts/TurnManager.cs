@@ -1,8 +1,10 @@
+// NetworkTurnManager.cs - Fixed version with proper player assignment and turn logic
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Netcode;
 using System.Collections;
 
-public class TurnManager : MonoBehaviour
+public class TurnManager : NetworkBehaviour
 {
     [Header("Players")]
     public SlingShotController player1Slingshot;
@@ -14,161 +16,322 @@ public class TurnManager : MonoBehaviour
     public Text turnIndicator;
     public GameObject gameOverPanel;
     public Text gameOverText;
+    public Text connectionStatus;
+    public Text playerRole;
 
     [Header("Game Settings")]
-    public float turnSwitchDelay = 3f; // Time to wait after bird stops moving
+    public float turnSwitchDelay = 3f;
 
-    private int currentPlayer = 1; // 1 or 2
+    // NetworkVariables with proper initialization
+    private NetworkVariable<int> currentPlayer = new NetworkVariable<int>(1);
+    private NetworkVariable<bool> gameActive = new NetworkVariable<bool>(true);
+    private NetworkVariable<bool> waitingForBird = new NetworkVariable<bool>(false);
+
     private TicTacToeBoard gameBoard;
-    private bool gameActive = true;
-    private bool waitingForBird = false; // Track if we're waiting for a bird to settle
+    private int myPlayerNumber = 0;
+    private bool isInitialized = false;
+    private bool gameStarted = false;
 
     public static TurnManager Instance { get; private set; }
 
     void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Debug.Log($"Duplicate TurnManager found, destroying {gameObject.name}");
+            Destroy(gameObject);
+            return;
+        }
         Instance = this;
+        Debug.Log($"TurnManager Instance set: {gameObject.name}");
+        // Don't use DontDestroyOnLoad with NetworkBehaviour - let NetworkManager handle lifecycle
     }
 
-    void Start()
+    public override void OnNetworkSpawn()
     {
+        Debug.Log($"NetworkTurnManager spawned - IsHost: {IsHost}, ClientId: {NetworkManager.Singleton.LocalClientId}");
+
         gameBoard = FindFirstObjectByType<TicTacToeBoard>();
+
+        // Fixed player number assignment
+        if (NetworkManager.Singleton.IsHost)
+        {
+            myPlayerNumber = 1;
+            Debug.Log("I am Player 1 (Host)");
+        }
+        else
+        {
+            myPlayerNumber = 2;
+            Debug.Log("I am Player 2 (Client)");
+        }
+
+        // Subscribe to network variable changes AFTER spawn
+        currentPlayer.OnValueChanged += OnCurrentPlayerChanged;
+        gameActive.OnValueChanged += OnGameActiveChanged;
+        waitingForBird.OnValueChanged += OnWaitingForBirdChanged;
+
+        // Initialize game state
+        if (IsServer)
+        {
+            StartCoroutine(InitializeGameWhenReady());
+        }
+        else
+        {
+            // For clients, wait a bit then update UI
+            StartCoroutine(ClientInitializationDelay());
+        }
+
+        isInitialized = true;
+    }
+
+    IEnumerator ClientInitializationDelay()
+    {
+        yield return new WaitForSeconds(1f);
+        UpdateUI();
+        SetPlayerTurn();
+
+        // Force camera sync for client
+        yield return new WaitForSeconds(0.5f);
+        SetCamerasForCurrentPlayer();
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        if (currentPlayer != null) currentPlayer.OnValueChanged -= OnCurrentPlayerChanged;
+        if (gameActive != null) gameActive.OnValueChanged -= OnGameActiveChanged;
+        if (waitingForBird != null) waitingForBird.OnValueChanged -= OnWaitingForBirdChanged;
+
+        isInitialized = false;
+    }
+
+    IEnumerator InitializeGameWhenReady()
+    {
+        // Wait for both players to connect
+        while (NetworkManager.Singleton.ConnectedClientsList.Count < 2)
+        {
+            yield return new WaitForSeconds(0.5f);
+        }
+
+        // Wait a bit more for all objects to spawn
+        yield return new WaitForSeconds(1f);
+
         SetupGame();
     }
 
     void SetupGame()
     {
-        currentPlayer = 1;
-        gameActive = true;
-        waitingForBird = false;
+        if (!IsServer || !isInitialized) return;
 
-        // Set initial turn
-        SetPlayerTurn(currentPlayer);
+        Debug.Log("Setting up game...");
 
-        // Setup UI
+        currentPlayer.Value = 1; // Player 1 (Host) starts
+        gameActive.Value = true;
+        waitingForBird.Value = false;
+        gameStarted = true;
+
+        SetPlayerTurn();
+        UpdateUI();
+    }
+
+    public void StartGameFromLauncher()
+    {
+        if (!IsServer) return;
+
+        Debug.Log("Game started from launcher");
+        gameStarted = true;
+        SetupGame();
+    }
+
+    void SetPlayerTurn()
+    {
+        if (!isInitialized) return;
+        if (!gameActive.Value) return;
+
+        Debug.Log($"Setting turn - Current Player: {currentPlayer.Value}, My Player: {myPlayerNumber}");
+
+        // Enable/disable slingshots - each player should only control their own slingshot when it's their turn
+        if (player1Slingshot != null)
+        {
+            bool player1ShouldBeActive = (currentPlayer.Value == 1);
+            player1Slingshot.SetActive(player1ShouldBeActive);
+            Debug.Log($"Player 1 slingshot active: {player1ShouldBeActive}");
+        }
+
+        if (player2Slingshot != null)
+        {
+            bool player2ShouldBeActive = (currentPlayer.Value == 2);
+            player2Slingshot.SetActive(player2ShouldBeActive);
+            Debug.Log($"Player 2 slingshot active: {player2ShouldBeActive}");
+        }
+
+        // Camera management - all clients should see the same camera based on current turn
+        SetCamerasForCurrentPlayer();
+    }
+
+    void SetCamerasForCurrentPlayer()
+    {
+        // Ensure only one camera is active at a time on all clients
+        if (player1Camera != null)
+        {
+            bool shouldActivateP1Camera = (currentPlayer.Value == 1);
+            player1Camera.gameObject.SetActive(shouldActivateP1Camera);
+            Debug.Log($"Player 1 camera set to: {shouldActivateP1Camera}");
+        }
+
+        if (player2Camera != null)
+        {
+            bool shouldActivateP2Camera = (currentPlayer.Value == 2);
+            player2Camera.gameObject.SetActive(shouldActivateP2Camera);
+            Debug.Log($"Player 2 camera set to: {shouldActivateP2Camera}");
+        }
+
+        // Additional safety check - disable all other cameras
+        Camera[] allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+        foreach (Camera cam in allCameras)
+        {
+            if (cam != player1Camera && cam != player2Camera)
+            {
+                cam.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    void UpdateUI()
+    {
+        if (!isInitialized) return;
+
         if (turnIndicator != null)
-            turnIndicator.text = "Player " + currentPlayer + "'s Turn";
+        {
+            string turnText = $"Player {currentPlayer.Value}'s Turn";
+            if (currentPlayer.Value == myPlayerNumber)
+                turnText += " (Your Turn!)";
+            turnIndicator.text = turnText;
+        }
+
+        if (playerRole != null)
+            playerRole.text = $"You are Player {myPlayerNumber}";
+
+        if (connectionStatus != null && NetworkManager.Singleton != null)
+        {
+            if (NetworkManager.Singleton.IsHost)
+                connectionStatus.text = "Host (Player 1)";
+            else if (NetworkManager.Singleton.IsClient)
+                connectionStatus.text = "Client (Player 2)";
+        }
 
         if (gameOverPanel != null)
-            gameOverPanel.SetActive(false);
+            gameOverPanel.SetActive(!gameActive.Value);
     }
 
-    void SetPlayerTurn(int player)
+    [ServerRpc(RequireOwnership = false)]
+    public void OnBirdLaunchedServerRpc(ulong clientId)
     {
-        // Enable/disable slingshots
-        if (player1Slingshot != null) player1Slingshot.SetActive(player == 1);
-        if (player2Slingshot != null) player2Slingshot.SetActive(player == 2);
+        if (!gameActive.Value || !IsServer)
+        {
+            Debug.Log("Ignoring bird launch - game not active or not server");
+            return;
+        }
 
-        // Switch cameras
-        if (player1Camera != null) player1Camera.gameObject.SetActive(player == 1);
-        if (player2Camera != null) player2Camera.gameObject.SetActive(player == 2);
+        Debug.Log($"Bird launched by client {clientId}, current player: {currentPlayer.Value}");
 
-        // Update UI
-        if (turnIndicator != null)
-            turnIndicator.text = "Player " + player + "'s Turn";
+        // Check if it's the correct player's turn
+        bool isValidTurn = false;
+        if (currentPlayer.Value == 1 && clientId == 0) // Host is Player 1, clientId 0
+            isValidTurn = true;
+        else if (currentPlayer.Value == 2 && clientId != 0) // Client is Player 2, clientId != 0
+            isValidTurn = true;
+
+        if (!isValidTurn)
+        {
+            Debug.Log($"Wrong player tried to launch! Current player: {currentPlayer.Value}, ClientId: {clientId}");
+            return;
+        }
+
+        waitingForBird.Value = true;
+        StartCoroutine(WaitForBirdToSettleCoroutine());
     }
 
-    public void OnBirdLaunched()
+    [ServerRpc(RequireOwnership = false)]
+    public void OnBirdHitGroundServerRpc(ulong clientId)
     {
-        if (!gameActive) return;
-
-        waitingForBird = true;
-        // Start monitoring for when the bird stops moving
-        StartCoroutine(WaitForBirdToSettle());
-    }
-
-    // Called when bird hits ground without hitting board
-    public void OnBirdHitGround()
-    {
-        if (!gameActive || !waitingForBird) return;
+        if (!gameActive.Value || !waitingForBird.Value || !IsServer) return;
 
         Debug.Log("Bird hit ground - ending turn immediately");
-
-        // Stop waiting and immediately switch turns
         StopAllCoroutines();
-        waitingForBird = false;
+        waitingForBird.Value = false;
 
-        // Reset the bird and switch turns
-        SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
-        if (currentSlingshot != null)
-        {
-            currentSlingshot.ResetBird();
-        }
+        ResetCurrentBirdClientRpc();
 
-        if (gameActive)
+        if (gameActive.Value)
         {
             SwitchTurn();
         }
     }
 
-    // Called when bird hits the tic-tac-toe board
-    public void OnBirdHitBoard()
+    [ServerRpc(RequireOwnership = false)]
+    public void OnBirdHitBoardServerRpc(ulong clientId)
     {
-        if (!gameActive || !waitingForBird) return;
+        if (!gameActive.Value || !waitingForBird.Value || !IsServer) return;
 
         Debug.Log("Bird hit board - ending turn immediately");
-
-        // Stop waiting and immediately switch turns
         StopAllCoroutines();
-        waitingForBird = false;
+        waitingForBird.Value = false;
 
-        SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
-        if (currentSlingshot != null)
-        {
-            // reset instantly (no delay)
-            currentSlingshot.ResetBird();
-        }
+        ResetCurrentBirdClientRpc();
 
-        if (gameActive)
+        if (gameActive.Value)
         {
             SwitchTurn();
         }
     }
 
-    IEnumerator WaitForBirdToSettle()
+    [ClientRpc]
+    void ResetCurrentBirdClientRpc()
     {
-        SlingShotController currentSlingshot = (currentPlayer == 1) ? player1Slingshot : player2Slingshot;
+        SlingShotController currentSlingshot = (currentPlayer.Value == 1) ? player1Slingshot : player2Slingshot;
+        if (currentSlingshot != null)
+        {
+            currentSlingshot.ResetBird();
+        }
+    }
 
+    IEnumerator WaitForBirdToSettleCoroutine()
+    {
+        yield return new WaitForSeconds(1f);
+
+        SlingShotController currentSlingshot = (currentPlayer.Value == 1) ? player1Slingshot : player2Slingshot;
         if (currentSlingshot == null)
         {
-            Debug.LogError("Current slingshot is null!");
-            waitingForBird = false;
+            waitingForBird.Value = false;
             yield break;
         }
 
         GameObject bird = currentSlingshot.GetBird();
         if (bird == null)
         {
-            Debug.LogError("Bird is null!");
-            waitingForBird = false;
+            waitingForBird.Value = false;
             yield break;
         }
 
         Rigidbody birdRb = bird.GetComponent<Rigidbody>();
         if (birdRb == null)
         {
-            Debug.LogError("Bird has no Rigidbody!");
-            waitingForBird = false;
+            waitingForBird.Value = false;
             yield break;
         }
 
-        // Wait for bird to stop moving
-        yield return new WaitForSeconds(1f); // Initial delay
-
-        // Wait until bird velocity is low enough
+        // Wait for bird to settle
         while (birdRb.linearVelocity.magnitude > 0.1f || birdRb.angularVelocity.magnitude > 0.1f)
         {
             yield return new WaitForSeconds(0.1f);
         }
 
-        // Additional delay before switching turns
         yield return new WaitForSeconds(turnSwitchDelay);
 
-        currentSlingshot.ResetBird();
-        waitingForBird = false;
+        ResetCurrentBirdClientRpc();
+        waitingForBird.Value = false;
 
-        // Switch to next player
-        if (gameActive)
+        if (gameActive.Value)
         {
             SwitchTurn();
         }
@@ -176,13 +339,17 @@ public class TurnManager : MonoBehaviour
 
     void SwitchTurn()
     {
-        currentPlayer = (currentPlayer == 1) ? 2 : 1;
-        SetPlayerTurn(currentPlayer);
+        if (!IsServer) return;
+
+        currentPlayer.Value = (currentPlayer.Value == 1) ? 2 : 1;
+        Debug.Log($"Switched to Player {currentPlayer.Value}'s turn");
     }
 
-    public void OnSquareClaimed(int squareIndex, int player)
+    [ServerRpc(RequireOwnership = false)]
+    public void OnSquareClaimedServerRpc(int squareIndex, int player)
     {
-        // Check for win condition
+        if (!IsServer) return;
+
         if (gameBoard != null && gameBoard.CheckWin(player))
         {
             EndGame(player);
@@ -195,40 +362,101 @@ public class TurnManager : MonoBehaviour
 
     void EndGame(int winner)
     {
-        gameActive = false;
-        waitingForBird = false;
+        if (!IsServer) return;
 
-        // Disable both slingshots
+        gameActive.Value = false;
+        waitingForBird.Value = false;
+        EndGameClientRpc(winner);
+    }
+
+    [ClientRpc]
+    void EndGameClientRpc(int winner)
+    {
         if (player1Slingshot != null) player1Slingshot.SetActive(false);
         if (player2Slingshot != null) player2Slingshot.SetActive(false);
 
-        // Show game over UI
         if (gameOverPanel != null && gameOverText != null)
         {
             gameOverPanel.SetActive(true);
             if (winner == 0)
                 gameOverText.text = "It's a Draw!";
             else
-                gameOverText.text = "Player " + winner + " Wins!";
+                gameOverText.text = $"Player {winner} Wins!";
         }
     }
 
     public void RestartGame()
     {
-        // Reset the board
+        if (!IsServer) return;
+
+        RestartGameServerRpc();
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    void RestartGameServerRpc()
+    {
         if (gameBoard != null)
             gameBoard.ResetBoard();
 
-        // Reset both birds
-        if (player1Slingshot != null) player1Slingshot.ResetBird();
-        if (player2Slingshot != null) player2Slingshot.ResetBird();
-
-        // Restart game
+        RestartGameClientRpc();
         SetupGame();
     }
 
+    [ClientRpc]
+    void RestartGameClientRpc()
+    {
+        if (player1Slingshot != null) player1Slingshot.ResetBird();
+        if (player2Slingshot != null) player2Slingshot.ResetBird();
+    }
+
+    // Public getters with safety checks
     public int GetCurrentPlayer()
     {
-        return currentPlayer;
+        return isInitialized ? currentPlayer.Value : 1;
     }
+
+    public int GetMyPlayerNumber()
+    {
+        return myPlayerNumber;
+    }
+
+    public bool IsMyTurn()
+    {
+        bool result = isInitialized && gameStarted && currentPlayer.Value == myPlayerNumber;
+        Debug.Log($"IsMyTurn check - Initialized: {isInitialized}, GameStarted: {gameStarted}, CurrentPlayer: {currentPlayer.Value}, MyPlayer: {myPlayerNumber}, Result: {result}");
+        return result;
+    }
+
+    public bool IsGameActive()
+    {
+        return isInitialized && gameActive.Value;
+    }
+
+    // Network variable change callbacks
+    void OnCurrentPlayerChanged(int previousValue, int newValue)
+    {
+        Debug.Log($"Player turn changed from {previousValue} to {newValue}");
+        SetPlayerTurn();
+        UpdateUI();
+    }
+
+    void OnGameActiveChanged(bool previousValue, bool newValue)
+    {
+        Debug.Log($"Game active changed to {newValue}");
+        // Keep local state in sync for clients too
+        gameStarted = newValue;
+        // When game becomes active on client, (re)apply turn state and cameras
+        if (newValue)
+        {
+            SetPlayerTurn();
+            SetCamerasForCurrentPlayer();
+        }
+        UpdateUI();
+    }
+
+    void OnWaitingForBirdChanged(bool previousValue, bool newValue)
+    {
+        Debug.Log($"Waiting for bird changed to {newValue}");
+    }
+
 }

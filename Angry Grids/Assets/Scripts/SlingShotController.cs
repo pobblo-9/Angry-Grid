@@ -1,6 +1,8 @@
+// NetworkSlingShotController.cs - Fixed version with better turn validation
 using UnityEngine;
+using Unity.Netcode;
 
-public class SlingShotController : MonoBehaviour
+public class SlingShotController : NetworkBehaviour
 {
     [Header("Slingshot Components")]
     public Transform leftPost;
@@ -9,7 +11,7 @@ public class SlingShotController : MonoBehaviour
     public LineRenderer rightBand;
     public LineRenderer trajectoryLine;
 
-    [Header("Launch Settings")]
+[Header("Launch Settings")]
     public float forceMultiplier = 100f;
     public float maxStretch = 5f;
     public float minLaunch = 0.5f;
@@ -18,6 +20,9 @@ public class SlingShotController : MonoBehaviour
     public int trajectoryPoints = 30;
     public float timeStep = 0.1f;
 
+    [Header("Player Assignment")]
+    public int playerNumber = 1; // Set this in inspector: 1 for player1, 2 for player2
+
     private Rigidbody rb;
     private bool isDragging = false;
     private Vector3 startPos;
@@ -25,26 +30,21 @@ public class SlingShotController : MonoBehaviour
     private bool isActive = true;
     private bool hasHitBoard = false;
 
-    // Store original position for reset
     private Vector3 originalPosition;
     private Quaternion originalRotation;
 
-    // Two-stage aiming variables
     private enum AimingStage { None, Vertical, Horizontal }
     private AimingStage currentStage = AimingStage.None;
     private float verticalOffset = 0f;
     private float initialMouseY;
 
-    [Header("Audio")]
-    [SerializeField] private AudioSource dragAudioSource;
-    [SerializeField] private AudioSource releaseAudioSource;
+    // Safety flags
+    private bool isNetworkSpawned = false;
 
     void Start()
     {
         rb = GetComponent<Rigidbody>();
         startPos = transform.position;
-
-        // Store original position and rotation for reset
         originalPosition = transform.position;
         originalRotation = transform.rotation;
 
@@ -52,27 +52,127 @@ public class SlingShotController : MonoBehaviour
         if (rightBand != null) { rightBand.positionCount = 3; rightBand.enabled = false; }
         if (trajectoryLine != null) { trajectoryLine.positionCount = trajectoryPoints; trajectoryLine.enabled = false; }
 
-        // ensure bird starts kinematic until player starts aiming
         if (rb != null) rb.isKinematic = true;
 
+        Debug.Log($"Slingshot initialized for Player {playerNumber}");
+    }
+
+    public override void OnNetworkSpawn()
+    {
+        isNetworkSpawned = true;
+        Debug.Log($"SlingShotController Player {playerNumber} NETWORK SPAWNED! IsOwner: {IsOwner}, ClientId: {OwnerClientId}, GameObject: {gameObject.name}");
+        Debug.Log($"Player {playerNumber} slingshot is now network ready!");
+    }
+
+    public override void OnNetworkDespawn()
+    {
+        isNetworkSpawned = false;
     }
 
     void Update()
     {
-        if (!isActive) return;
-        HandleInput();
+        if (!isActive || !isNetworkSpawned) return;
+
+        // Check if it's this player's turn and if we should handle input
+        bool canHandleInput = CanHandleInput();
+
+        if (canHandleInput)
+        {
+            HandleInput();
+        }
+    }
+    
+
+    bool CanHandleInput()
+    {
+        // Simplified for debugging - let's see if the basic mechanics work first
+        Debug.Log($"CanHandleInput check for Player {playerNumber}: NetworkSpawned={isNetworkSpawned}, Active={isActive}");
+        
+        // Basic checks first
+        if (!isActive)
+        {
+            Debug.Log($"Slingshot {playerNumber} is not active");
+            return false;
+        }
+        
+        // Ensure this slingshot has been network spawned
+        if (!isNetworkSpawned)
+        {
+            Debug.Log($"Slingshot {playerNumber} is not network spawned");
+            return false;
+        }
+        
+        // Check if TurnManager exists
+        if (TurnManager.Instance == null)
+        {
+            Debug.Log($"TurnManager.Instance is null for Player {playerNumber}");
+            return false;
+        }
+        
+        if (!TurnManager.Instance.IsSpawned)
+        {
+            Debug.Log($"TurnManager not spawned for Player {playerNumber}");
+            return false;
+        }
+
+        // Check if the game is active
+        if (!TurnManager.Instance.IsGameActive())
+        {
+            Debug.Log($"Game not active for Player {playerNumber}");
+            return false;
+        }
+
+        // Get current player from turn manager
+        int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+        int myPlayerNumber = TurnManager.Instance.GetMyPlayerNumber();
+        
+        // Simplified logic: just check if it's my turn
+        bool isMyTurn = (currentPlayer == playerNumber && myPlayerNumber == playerNumber);
+        
+        Debug.Log($"Turn check for Player {playerNumber}: Current={currentPlayer}, My={myPlayerNumber}, IsMyTurn={isMyTurn}");
+        
+        return isMyTurn;
     }
 
     void HandleInput()
     {
         if (Input.GetMouseButtonDown(0))
         {
+            Debug.Log($"Mouse clicked! Player {playerNumber}, Stage: {currentStage}");
+            
             if (currentStage == AimingStage.None)
             {
-                Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
-                if (Physics.Raycast(ray, out RaycastHit hit) && hit.collider.gameObject == gameObject)
+                Camera currentCamera = Camera.main;
+                if (currentCamera == null) currentCamera = FindFirstObjectByType<Camera>();
+                
+                if (currentCamera != null)
                 {
-                    StartVerticalAiming();
+                    Ray ray = currentCamera.ScreenPointToRay(Input.mousePosition);
+                    Debug.Log($"Casting ray from camera for Player {playerNumber}. Camera: {currentCamera.name}");
+                    
+                    if (Physics.Raycast(ray, out RaycastHit hit))
+                    {
+                        Debug.Log($"Raycast hit: {hit.collider.gameObject.name}, Expected root: {gameObject.name}");
+                        // Accept hit if it is this object or any of its children
+                        bool hitThisBird = hit.collider.transform == transform || hit.collider.transform.IsChildOf(transform);
+                        if (hitThisBird)
+                        {
+                            Debug.Log($"Player {playerNumber} bird clicked (hit accepted)!");
+                            StartVerticalAiming();
+                        }
+                        else
+                        {
+                            Debug.Log($"Hit different object: {hit.collider.gameObject.name}");
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log($"Raycast missed everything for Player {playerNumber}");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning($"No camera found for Player {playerNumber} input!");
                 }
             }
             else if (currentStage == AimingStage.Vertical)
@@ -95,6 +195,7 @@ public class SlingShotController : MonoBehaviour
 
     void StartVerticalAiming()
     {
+        Debug.Log($"Starting vertical aiming for Player {playerNumber}");
         currentStage = AimingStage.Vertical;
         isDragging = true;
         if (rb != null) rb.isKinematic = true;
@@ -102,12 +203,6 @@ public class SlingShotController : MonoBehaviour
         if (leftBand != null) leftBand.enabled = true;
         if (rightBand != null) rightBand.enabled = true;
         if (trajectoryLine != null) trajectoryLine.enabled = true;
-
-        // Play drag sound once when starting to aim
-        if (dragAudioSource != null)
-        {
-            dragAudioSource.Play();
-        }
 
         initialMouseY = Input.mousePosition.y;
         verticalOffset = 0f;
@@ -127,12 +222,18 @@ public class SlingShotController : MonoBehaviour
 
     void StartHorizontalAiming()
     {
+        Debug.Log($"Starting horizontal aiming for Player {playerNumber}");
         currentStage = AimingStage.Horizontal;
     }
 
     void UpdateHorizontalAiming()
     {
-        Ray mouseRay = Camera.main.ScreenPointToRay(Input.mousePosition);
+        Camera currentCamera = Camera.main;
+        if (currentCamera == null) currentCamera = FindFirstObjectByType<Camera>();
+        
+        if (currentCamera == null) return;
+        
+        Ray mouseRay = currentCamera.ScreenPointToRay(Input.mousePosition);
         Plane dragPlane = new Plane(Vector3.up, startPos);
         Vector3 worldMouse = startPos;
 
@@ -154,35 +255,74 @@ public class SlingShotController : MonoBehaviour
 
     void LaunchBird()
     {
+        Vector3 pullVector = startPos - transform.position;
+
+        if (pullVector.magnitude >= minLaunch)
+        {
+            Debug.Log($"Launching bird for Player {playerNumber} with force: {pullVector.magnitude}");
+
+            // Safety check before sending RPC
+            if (IsSpawned && isNetworkSpawned && NetworkManager.Singleton != null)
+            {
+                try
+                {
+                    LaunchBirdServerRpc(pullVector, NetworkManager.Singleton.LocalClientId);
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError($"Failed to send LaunchBirdServerRpc: {e.Message}");
+                    ExecuteLaunchLocal(pullVector);
+                }
+            }
+        }
+        else
+        {
+            CancelAiming();
+        }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    void LaunchBirdServerRpc(Vector3 pullVector, ulong clientId, ServerRpcParams serverRpcParams = default)
+    {
+        Debug.Log($"Server received launch from client {clientId} for Player {playerNumber}");
+
+        // Execute launch on all clients
+        ExecuteLaunchClientRpc(pullVector);
+
+        // Notify turn manager
+        if (TurnManager.Instance != null && TurnManager.Instance.IsSpawned)
+        {
+            try
+            {
+                TurnManager.Instance.OnBirdLaunchedServerRpc(clientId);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Failed to notify turn manager: {e.Message}");
+            }
+        }
+    }
+
+    [ClientRpc]
+    void ExecuteLaunchClientRpc(Vector3 pullVector)
+    {
+        ExecuteLaunchLocal(pullVector);
+    }
+
+    void ExecuteLaunchLocal(Vector3 pullVector)
+    {
+        Debug.Log($"Executing launch locally for Player {playerNumber}");
+
         isDragging = false;
         isLaunched = true;
         hasHitBoard = false;
         if (rb != null) rb.isKinematic = false;
         currentStage = AimingStage.None;
 
-        // Stop drag sound if it's looping
-        if (dragAudioSource != null && dragAudioSource.isPlaying)
-        {
-            dragAudioSource.Stop();
-        }
+        if (rb != null) rb.AddForce(pullVector * forceMultiplier, ForceMode.Impulse);
 
-        // Play release sound when letting go
-        if (releaseAudioSource != null)
-        {
-            releaseAudioSource.Play();
-        }
-
-        Vector3 pullVector = startPos - transform.position;
-
-        if (pullVector.magnitude >= minLaunch)
-        {
-            if (rb != null) rb.AddForce(pullVector * forceMultiplier, ForceMode.Impulse);
-
-            CameraFollowBird cameraFollow = FindFirstObjectByType<CameraFollowBird>();
-            if (cameraFollow != null) cameraFollow.OnBirdLaunched();
-
-            if (TurnManager.Instance != null) TurnManager.Instance.OnBirdLaunched();
-        }
+        CameraFollowBird cameraFollow = FindFirstObjectByType<CameraFollowBird>();
+        if (cameraFollow != null) cameraFollow.OnBirdLaunched();
 
         verticalOffset = 0f;
 
@@ -230,94 +370,127 @@ public class SlingShotController : MonoBehaviour
 
     void OnCollisionEnter(Collision collision)
     {
-        if (!isLaunched) return;
+        if (!isLaunched || !isNetworkSpawned) return;
 
         TicTacToeSquare square = collision.gameObject.GetComponent<TicTacToeSquare>();
         if (square != null)
         {
             hasHitBoard = true;
-            Debug.Log("Bird hit tic-tac-toe square!");
-
-            if (TurnManager.Instance != null)
-            {
-                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
-                square.OnSquareHit(currentPlayer);
-                TurnManager.Instance.OnBirdHitBoard(); // reset immediately
-            }
+            Debug.Log($"Player {playerNumber} bird hit tic-tac-toe square!");
+            HandleBoardHit(square);
             return;
         }
 
         if (collision.gameObject.CompareTag("TicTacToeSquare"))
         {
             hasHitBoard = true;
-            Debug.Log("Bird hit tic-tac-toe board (by tag)!");
-
+            Debug.Log($"Player {playerNumber} bird hit tic-tac-toe board (by tag)!");
             TicTacToeSquare parentSquare = collision.gameObject.GetComponentInParent<TicTacToeSquare>();
-            if (parentSquare != null && TurnManager.Instance != null)
+            if (parentSquare != null)
             {
-                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
-                parentSquare.OnSquareHit(currentPlayer);
-                TurnManager.Instance.OnBirdHitBoard(); // reset immediately
+                HandleBoardHit(parentSquare);
             }
             return;
         }
 
         if (collision.gameObject.CompareTag("Ground") && !hasHitBoard)
         {
-            Debug.Log("Bird hit the ground without hitting the board - resetting!");
-            if (TurnManager.Instance != null) TurnManager.Instance.OnBirdHitGround();
+            Debug.Log($"Player {playerNumber} bird hit the ground without hitting the board - resetting!");
+            HandleGroundHit();
         }
     }
 
     void OnTriggerEnter(Collider other)
     {
-        if (!isLaunched) return;
+        if (!isLaunched || !isNetworkSpawned) return;
 
         TicTacToeSquare square = other.GetComponent<TicTacToeSquare>();
         if (square != null)
         {
             hasHitBoard = true;
-            Debug.Log("Bird triggered tic-tac-toe square!");
-
-            if (TurnManager.Instance != null)
-            {
-                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
-                square.OnSquareHit(currentPlayer);
-                TurnManager.Instance.OnBirdHitBoard(); // reset immediately
-            }
+            Debug.Log($"Player {playerNumber} bird triggered tic-tac-toe square!");
+            HandleBoardHit(square);
             return;
         }
 
         if (other.CompareTag("TicTacToeSquare"))
         {
             hasHitBoard = true;
-            Debug.Log("Bird triggered tic-tac-toe board (by tag)!");
-
+            Debug.Log($"Player {playerNumber} bird triggered tic-tac-toe board (by tag)!");
             TicTacToeSquare parentSquare = other.GetComponentInParent<TicTacToeSquare>();
-            if (parentSquare != null && TurnManager.Instance != null)
+            if (parentSquare != null)
             {
-                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
-                parentSquare.OnSquareHit(currentPlayer);
-                TurnManager.Instance.OnBirdHitBoard(); // reset immediately
+                HandleBoardHit(parentSquare);
             }
             return;
         }
 
         if (other.CompareTag("Ground") && !hasHitBoard)
         {
-            Debug.Log("Bird triggered the ground without hitting the board - resetting!");
-            if (TurnManager.Instance != null) TurnManager.Instance.OnBirdHitGround();
+            Debug.Log($"Player {playerNumber} bird triggered the ground without hitting the board - resetting!");
+            HandleGroundHit();
+        }
+    }
+
+    void HandleBoardHit(TicTacToeSquare square)
+    {
+        try
+        {
+            if (TurnManager.Instance != null)
+            {
+                int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+
+                // Prefer server-authoritative claim via board ServerRpc
+                TicTacToeBoard board = FindFirstObjectByType<TicTacToeBoard>();
+                if (board != null && board.IsSpawned && square != null)
+                {
+                    int index = square.GetIndex();
+                    board.RequestClaimSquareServerRpc(index, currentPlayer);
+                }
+                else if (square != null)
+                {
+                    // Fallback: local update
+                    square.OnSquareHit(currentPlayer);
+                }
+
+                if (TurnManager.Instance.IsSpawned)
+                {
+                    TurnManager.Instance.OnBirdHitBoardServerRpc(NetworkManager.Singleton.LocalClientId);
+                }
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"Failed to handle board hit: {e.Message}");
+        }
+    }
+
+    void HandleGroundHit()
+    {
+        if (TurnManager.Instance != null && TurnManager.Instance.IsSpawned)
+        {
+            try
+            {
+                TurnManager.Instance.OnBirdHitGroundServerRpc(NetworkManager.Singleton.LocalClientId);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"Failed to handle ground hit: {e.Message}");
+            }
         }
     }
 
     public void SetActive(bool active)
     {
         isActive = active;
+        Debug.Log($"Player {playerNumber} slingshot active: {active}");
         if (!active && isDragging) CancelAiming();
     }
 
     public void ResetBird()
     {
+        Debug.Log($"Resetting Player {playerNumber} bird");
+
         transform.position = originalPosition;
         transform.rotation = originalRotation;
         startPos = originalPosition;
@@ -326,7 +499,7 @@ public class SlingShotController : MonoBehaviour
         {
             rb.linearVelocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
-            rb.isKinematic = true; // freeze until aiming again
+            rb.isKinematic = true;
         }
 
         isDragging = false;
@@ -343,22 +516,19 @@ public class SlingShotController : MonoBehaviour
     public GameObject GetBird() => gameObject;
     public bool IsLaunched() => isLaunched;
     public bool HasHitBoard() => hasHitBoard;
+    public int GetPlayerNumber() => playerNumber;
 
     private void CancelAiming()
     {
+        Debug.Log($"Canceling aiming for Player {playerNumber}");
         isDragging = false;
         currentStage = AimingStage.None;
         verticalOffset = 0f;
         transform.position = startPos;
 
-        // Stop any ongoing drag audio
-        if (dragAudioSource != null && dragAudioSource.isPlaying)
-        {
-            dragAudioSource.Stop();
-        }
-
         if (leftBand != null) leftBand.enabled = false;
         if (rightBand != null) rightBand.enabled = false;
         if (trajectoryLine != null) trajectoryLine.enabled = false;
     }
+
 }

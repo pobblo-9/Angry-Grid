@@ -1,17 +1,19 @@
+// NetworkTicTacToeBoard.cs
 using UnityEngine;
+using Unity.Netcode;
+using UnityEngine.Rendering;
 
-public class TicTacToeBoard : MonoBehaviour
+public class TicTacToeBoard : NetworkBehaviour
 {
-    [Header("Board Setup")]
-    public TicTacToeSquare[] squares = new TicTacToeSquare[9]; // 3x3 grid
-    public GameObject player1Symbol; // X prefab
-    public GameObject player2Symbol; // O prefab
+    public TicTacToeSquare[] squares = new TicTacToeSquare[9];
+    public GameObject player1Symbol;
+    public GameObject player2Symbol;
 
-    [Header("Board Layout")]
+[Header("Board Layout")]
     public float squareSize = 2f;
     public float squareSpacing = 0.2f;
 
-    private int[,] board = new int[3, 3]; // 0 = empty, 1 = player1, 2 = player2
+    private int[,] board = new int[3, 3];
 
     void Start() => SetupBoard();
 
@@ -39,8 +41,13 @@ public class TicTacToeBoard : MonoBehaviour
 
     public void ResetBoard()
     {
-        for (int i = 0; i < 3; i++) for (int j = 0; j < 3; j++) board[i, j] = 0;
-        foreach (var square in squares) if (square != null) square.ClearSquare();
+        for (int i = 0; i < 3; i++)
+            for (int j = 0; j < 3; j++)
+                board[i, j] = 0;
+
+        foreach (var square in squares)
+            if (square != null)
+                square.ClearSquare();
     }
 
     public bool ClaimSquare(int squareIndex, int player)
@@ -53,23 +60,48 @@ public class TicTacToeBoard : MonoBehaviour
         if (board[row, col] != 0) return false;
 
         board[row, col] = player;
-        squares[squareIndex].SetPlayer(player);
-        SpawnSymbol(squareIndex, player);
 
-        if (TurnManager.Instance != null) TurnManager.Instance.OnSquareClaimed(squareIndex, player);
+        if (IsServer)
+        {
+            // Update square ownership on server and all clients
+            if (squares[squareIndex] != null)
+                squares[squareIndex].SetPlayer(player);
+            UpdateSquareOwnerClientRpc(squareIndex, player);
+            SpawnSymbolClientRpc(squareIndex, player);
+        }
+
+        if (TurnManager.Instance != null)
+            TurnManager.Instance.OnSquareClaimedServerRpc(squareIndex, player);
+
         return true;
     }
 
-    void SpawnSymbol(int squareIndex, int player)
+    [ClientRpc]
+    void SpawnSymbolClientRpc(int squareIndex, int player)
     {
         GameObject symbolPrefab = (player == 1) ? player1Symbol : player2Symbol;
         if (symbolPrefab != null && squares[squareIndex] != null)
         {
             GameObject symbol = Instantiate(symbolPrefab, squares[squareIndex].transform);
-            symbol.transform.localPosition = Vector3.up * 0.5f; // above the square
+            symbol.transform.localPosition = Vector3.up * 0.5f;
             symbol.transform.localRotation = Quaternion.identity;
             symbol.transform.localScale = Vector3.one * 0.8f;
         }
+    }
+
+    [ClientRpc]
+    void UpdateSquareOwnerClientRpc(int squareIndex, int player)
+    {
+        if (squares != null && squareIndex >= 0 && squareIndex < squares.Length && squares[squareIndex] != null)
+        {
+            squares[squareIndex].SetPlayer(player);
+        }
+    }
+
+    [ServerRpc(RequireOwnership = false)]
+    public void RequestClaimSquareServerRpc(int squareIndex, int player)
+    {
+        ClaimSquare(squareIndex, player);
     }
 
     public bool CheckWin(int player)
@@ -95,4 +127,5 @@ public class TicTacToeBoard : MonoBehaviour
     }
 
     public int[,] GetBoard() => board;
+
 }

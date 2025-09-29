@@ -1,170 +1,332 @@
+// NetworkedBird.cs - Networked bird physics and collision detection
 using UnityEngine;
-using UnityEngine.UI;
-using UnityEngine.EventSystems;
+using Unity.Netcode;
 
-public class TeleportManager : MonoBehaviour
+public class NetworkedBird : NetworkBehaviour
 {
-    [Header("Teleport Settings")]
-    [SerializeField] private GameObject selectedObject;
-    [SerializeField] private Vector3 targetCoordinates = new Vector3(0, 0, 0);
+    [Header("Bird Physics")]
+    public float mass = 1f;
+    public float drag = 0.5f;
+    public float angularDrag = 0.8f;
+    public bool useGravity = true;
 
-    [Header("UI References")]
-    [SerializeField] private Button teleportButton;
+    [Header("Collision Settings")]
+    public LayerMask groundLayer = -1;
+    public LayerMask boardLayer = -1;
+    
+    [Header("Effects")]
+    public ParticleSystem hitEffect;
+    public AudioClip hitSound;
+    public AudioClip launchSound;
 
-    [Header("Optional Settings")]
-    [SerializeField] private bool useRandomOffset = false;
-    [SerializeField] private float randomOffsetRange = 1f;
-    [SerializeField] private bool playTeleportEffect = false;
-    [SerializeField] private ParticleSystem teleportEffect;
-    [SerializeField] private AudioClip teleportSound;
-
+    private Rigidbody rb;
     private AudioSource audioSource;
-    private bool teleportRequested = false;
+    private bool hasLaunched = false;
+    private bool hasHitBoard = false;
+    private int ownerPlayerNumber = 0;
+
+    // Network variables to sync bird state
+    private NetworkVariable<Vector3> networkPosition = new NetworkVariable<Vector3>();
+    private NetworkVariable<Vector3> networkVelocity = new NetworkVariable<Vector3>();
+    private NetworkVariable<bool> isLaunched = new NetworkVariable<bool>(false);
+
+    void Awake()
+    {
+        rb = GetComponent<Rigidbody>();
+        audioSource = GetComponent<AudioSource>();
+        
+        if (audioSource == null)
+            audioSource = gameObject.AddComponent<AudioSource>();
+    }
 
     void Start()
     {
-        // Get or add AudioSource component
-        audioSource = GetComponent<AudioSource>();
-        if (audioSource == null && teleportSound != null)
-        {
-            audioSource = gameObject.AddComponent<AudioSource>();
-        }
-
-        // Subscribe to button click event
-        if (teleportButton != null)
-        {
-            teleportButton.onClick.AddListener(RequestTeleport);
-        }
-        else
-        {
-            Debug.LogWarning("Teleport button is not assigned!");
-        }
+        SetupPhysics();
     }
 
-    void OnDestroy()
+    public override void OnNetworkSpawn()
     {
-        // Unsubscribe from button event to prevent memory leaks
-        if (teleportButton != null)
+        // Subscribe to network variable changes
+        networkPosition.OnValueChanged += OnPositionChanged;
+        networkVelocity.OnValueChanged += OnVelocityChanged;
+        isLaunched.OnValueChanged += OnLaunchedStateChanged;
+        
+        // Initialize position
+        if (IsOwner)
         {
-            teleportButton.onClick.RemoveListener(RequestTeleport);
+            networkPosition.Value = transform.position;
         }
     }
 
-    // This method is called by the UI button ONLY
-    public void RequestTeleport()
+    public override void OnNetworkDespawn()
     {
-        teleportRequested = true;
-        Debug.Log("Teleport requested via UI button");
-        TeleportObject();
+        // Unsubscribe from network variable changes
+        if (networkPosition != null) networkPosition.OnValueChanged -= OnPositionChanged;
+        if (networkVelocity != null) networkVelocity.OnValueChanged -= OnVelocityChanged;
+        if (isLaunched != null) isLaunched.OnValueChanged -= OnLaunchedStateChanged;
     }
 
-    // This is the actual teleport method - only call this from RequestTeleport()
-    private void TeleportObject()
+    void SetupPhysics()
     {
-        // Safety check - only teleport if it was requested via the UI button
-        if (!teleportRequested)
+        if (rb != null)
         {
-            Debug.Log("Teleport blocked: Not requested via UI button");
-            return;
+            rb.mass = mass;
+            rb.linearDamping = drag;
+            rb.angularDamping = angularDrag;
+            rb.useGravity = useGravity;
+            rb.isKinematic = true; // Start kinematic, enable physics when launched
         }
-
-        if (selectedObject == null)
-        {
-            Debug.LogWarning("No object selected for teleportation!");
-            teleportRequested = false;
-            return;
-        }
-
-        Vector3 finalPosition = targetCoordinates;
-
-        // Add random offset if enabled
-        if (useRandomOffset)
-        {
-            Vector3 randomOffset = new Vector3(
-                Random.Range(-randomOffsetRange, randomOffsetRange),
-                Random.Range(-randomOffsetRange, randomOffsetRange),
-                Random.Range(-randomOffsetRange, randomOffsetRange)
-            );
-            finalPosition += randomOffset;
-        }
-
-        // Play teleport effect at current position (before teleporting)
-        if (playTeleportEffect && teleportEffect != null)
-        {
-            PlayTeleportEffectAt(selectedObject.transform.position);
-        }
-
-        Vector3 oldPosition = selectedObject.transform.position;
-
-        // Teleport the object
-        selectedObject.transform.position = finalPosition;
-
-        // Play teleport effect at destination
-        if (playTeleportEffect && teleportEffect != null)
-        {
-            PlayTeleportEffectAt(finalPosition);
-        }
-
-        // Play teleport sound
-        if (teleportSound != null && audioSource != null)
-        {
-            audioSource.PlayOneShot(teleportSound);
-        }
-
-        Debug.Log($"Successfully teleported {selectedObject.name} from {oldPosition} to {finalPosition}");
-
-        // Reset the request flag
-        teleportRequested = false;
     }
 
-    private void PlayTeleportEffectAt(Vector3 position)
+    public void InitializeBird(int playerNumber)
     {
-        if (teleportEffect != null)
-        {
-            // Create temporary effect at position
-            ParticleSystem effect = Instantiate(teleportEffect, position, Quaternion.identity);
-            effect.Play();
+        ownerPlayerNumber = playerNumber;
+        gameObject.tag = "Bird";
+        Debug.Log($"Bird initialized for Player {playerNumber}");
+    }
 
-            // Destroy effect after it finishes
-            Destroy(effect.gameObject, effect.main.duration + effect.main.startLifetime.constantMax);
+    public void LaunchBird(Vector3 force)
+    {
+        if (!IsOwner || hasLaunched) return;
+
+        Debug.Log($"Launching bird with force: {force}");
+        
+        hasLaunched = true;
+        hasHitBoard = false;
+        
+        if (rb != null)
+        {
+            rb.isKinematic = false;
+            rb.AddForce(force, ForceMode.Impulse);
+        }
+
+        // Update network state
+        if (IsServer)
+        {
+            isLaunched.Value = true;
+            networkVelocity.Value = rb.linearVelocity;
+        }
+
+        // Play launch sound
+        if (launchSound != null && audioSource != null)
+            audioSource.PlayOneShot(launchSound);
+
+        LaunchBirdClientRpc(force);
+    }
+
+    [ClientRpc]
+    void LaunchBirdClientRpc(Vector3 force)
+    {
+        if (!IsOwner) // Non-owners need to sync the launch
+        {
+            hasLaunched = true;
+            if (rb != null)
+            {
+                rb.isKinematic = false;
+                rb.AddForce(force, ForceMode.Impulse);
+            }
+
+            if (launchSound != null && audioSource != null)
+                audioSource.PlayOneShot(launchSound);
         }
     }
 
-    // Method to set selected object from script
-    public void SetSelectedObject(GameObject obj)
+    public void ResetBird(Vector3 resetPosition, Quaternion resetRotation)
     {
-        selectedObject = obj;
-        Debug.Log($"Selected object set to: {obj.name}");
+        Debug.Log($"Resetting bird for Player {ownerPlayerNumber}");
+        
+        hasLaunched = false;
+        hasHitBoard = false;
+        
+        transform.position = resetPosition;
+        transform.rotation = resetRotation;
+        
+        if (rb != null)
+        {
+            rb.linearVelocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+            rb.isKinematic = true;
+        }
+
+        if (IsServer)
+        {
+            isLaunched.Value = false;
+            networkPosition.Value = resetPosition;
+            networkVelocity.Value = Vector3.zero;
+        }
+
+        ResetBirdClientRpc(resetPosition, resetRotation);
     }
 
-    // Method to set target coordinates from script
-    public void SetTargetCoordinates(Vector3 coordinates)
+    [ClientRpc]
+    void ResetBirdClientRpc(Vector3 resetPosition, Quaternion resetRotation)
     {
-        targetCoordinates = coordinates;
-        Debug.Log($"Target coordinates set to: {coordinates}");
+        if (!IsOwner)
+        {
+            hasLaunched = false;
+            hasHitBoard = false;
+            transform.position = resetPosition;
+            transform.rotation = resetRotation;
+            
+            if (rb != null)
+            {
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.isKinematic = true;
+            }
+        }
     }
 
-    // Method to set target coordinates with individual values
-    public void SetTargetCoordinates(float x, float y, float z)
-    {
-        SetTargetCoordinates(new Vector3(x, y, z));
-    }
-
-    // Emergency method to force teleport (bypasses all checks)
-    public void ForceTeleport()
-    {
-        teleportRequested = true;
-        TeleportObject();
-    }
-
-    // Check if something else is trying to call TeleportObject directly
     void Update()
     {
-        // If you see this message in the console, something else is calling TeleportObject()
-        if (Input.GetKeyDown(KeyCode.T))
+        // Sync position for owner
+        if (IsOwner && hasLaunched && rb != null)
         {
-            Debug.Log("Manual teleport test - this should work");
-            RequestTeleport();
+            if (IsServer)
+            {
+                networkPosition.Value = transform.position;
+                networkVelocity.Value = rb.linearVelocity;
+            }
+        }
+        
+        // Check if bird is out of bounds
+        if (hasLaunched && transform.position.y < -50f)
+        {
+            OnBirdOutOfBounds();
         }
     }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        if (!hasLaunched || !IsOwner) return;
+
+        // Check for tic-tac-toe square collision
+        TicTacToeSquare square = collision.gameObject.GetComponent<TicTacToeSquare>();
+        if (square != null && !hasHitBoard)
+        {
+            hasHitBoard = true;
+            OnBoardHit(square);
+            return;
+        }
+
+        // Check for ground collision
+        if (((1 << collision.gameObject.layer) & groundLayer) != 0)
+        {
+            OnGroundHit();
+            return;
+        }
+
+        // Play hit effects
+        PlayHitEffects(collision.contacts[0].point);
+    }
+
+    void OnTriggerEnter(Collider other)
+    {
+        if (!hasLaunched || !IsOwner) return;
+
+        // Check for tic-tac-toe square trigger
+        TicTacToeSquare square = other.GetComponent<TicTacToeSquare>();
+        if (square != null && !hasHitBoard)
+        {
+            hasHitBoard = true;
+            OnBoardHit(square);
+        }
+    }
+
+    void OnBoardHit(TicTacToeSquare square)
+    {
+        Debug.Log($"Player {ownerPlayerNumber} bird hit the tic-tac-toe board!");
+        
+        if (TurnManager.Instance != null)
+        {
+            int currentPlayer = TurnManager.Instance.GetCurrentPlayer();
+            TicTacToeBoard board = FindFirstObjectByType<TicTacToeBoard>();
+            if (board != null && board.IsSpawned && square != null)
+            {
+                int squareIndex = square.GetIndex();
+                board.RequestClaimSquareServerRpc(squareIndex, currentPlayer);
+            }
+            
+            if (TurnManager.Instance.IsSpawned)
+            {
+                TurnManager.Instance.OnBirdHitBoardServerRpc(NetworkManager.Singleton.LocalClientId);
+            }
+        }
+
+        PlayHitEffects(transform.position);
+    }
+
+    void OnGroundHit()
+    {
+        if (!hasHitBoard)
+        {
+            Debug.Log($"Player {ownerPlayerNumber} bird hit the ground without hitting the board!");
+            
+            if (TurnManager.Instance != null && TurnManager.Instance.IsSpawned)
+            {
+                TurnManager.Instance.OnBirdHitGroundServerRpc(NetworkManager.Singleton.LocalClientId);
+            }
+        }
+
+        PlayHitEffects(transform.position);
+    }
+
+    void OnBirdOutOfBounds()
+    {
+        Debug.Log($"Player {ownerPlayerNumber} bird went out of bounds!");
+        
+        if (TurnManager.Instance != null && TurnManager.Instance.IsSpawned)
+        {
+            TurnManager.Instance.OnBirdHitGroundServerRpc(NetworkManager.Singleton.LocalClientId);
+        }
+    }
+
+    void PlayHitEffects(Vector3 hitPosition)
+    {
+        if (hitEffect != null)
+        {
+            GameObject effect = Instantiate(hitEffect.gameObject, hitPosition, Quaternion.identity);
+            ParticleSystem ps = effect.GetComponent<ParticleSystem>();
+            if (ps != null)
+            {
+                ps.Play();
+                Destroy(effect, ps.main.duration + ps.main.startLifetime.constantMax);
+            }
+        }
+
+        if (hitSound != null && audioSource != null)
+            audioSource.PlayOneShot(hitSound);
+    }
+
+    // Network variable change callbacks
+    void OnPositionChanged(Vector3 previousValue, Vector3 newValue)
+    {
+        if (!IsOwner)
+        {
+            transform.position = newValue;
+        }
+    }
+
+    void OnVelocityChanged(Vector3 previousValue, Vector3 newValue)
+    {
+        if (!IsOwner && rb != null)
+        {
+            rb.linearVelocity = newValue;
+        }
+    }
+
+    void OnLaunchedStateChanged(bool previousValue, bool newValue)
+    {
+        hasLaunched = newValue;
+        if (newValue && rb != null)
+        {
+            rb.isKinematic = false;
+        }
+    }
+
+    // Public getters
+    public bool HasLaunched() => hasLaunched;
+    public bool HasHitBoard() => hasHitBoard;
+    public int GetPlayerNumber() => ownerPlayerNumber;
+    public Rigidbody GetRigidbody() => rb;
 }
