@@ -18,6 +18,7 @@ public class TurnManager : NetworkBehaviour
     public Text gameOverText;
     public Text connectionStatus;
     public Text playerRole;
+    public Button returnToMenuButton;
 
     [Header("Game Settings")]
     public float turnSwitchDelay = 3f;
@@ -382,6 +383,22 @@ public class TurnManager : NetworkBehaviour
                 gameOverText.text = "It's a Draw!";
             else
                 gameOverText.text = $"Player {winner} Wins!";
+        }
+
+        if (returnToMenuButton != null)
+        {
+            returnToMenuButton.gameObject.SetActive(true);
+            returnToMenuButton.onClick.RemoveAllListeners();
+            returnToMenuButton.onClick.AddListener(ReturnToMenuFromGameOver);
+        }
+    }
+
+    void ReturnToMenuFromGameOver()
+    {
+        var launcher = FindFirstObjectByType<NetworkGameLauncher>();
+        if (launcher != null)
+        {
+            launcher.DisconnectAndReturnToMenu();
         }
     }
 

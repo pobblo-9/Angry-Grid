@@ -3,6 +3,7 @@ using UnityEngine;
 using Unity.Netcode;
 using UnityEngine.UI;
 using System.Collections;
+using UnityEngine.SceneManagement;
 
 public class NetworkGameLauncher : NetworkBehaviour
 {
@@ -18,6 +19,9 @@ public class NetworkGameLauncher : NetworkBehaviour
 
 [Header("Game Objects")]
     public GameObject gameplayObjects;
+
+    [Header("Scenes")]
+    [Tooltip("Optional: name of your Title scene to return to")] public string titleSceneName = "";
 
     private bool gameStarted = false;
     private bool isConnecting = false;
@@ -518,6 +522,13 @@ public class NetworkGameLauncher : NetworkBehaviour
     {
         yield return new WaitForSeconds(0.5f); // Give time for network cleanup
 
+        // If a title scene name is provided and menu is not present, allow loading it
+        if (!string.IsNullOrEmpty(titleSceneName) && menuPanel == null)
+        {
+            SceneManager.LoadScene(titleSceneName);
+            yield break;
+        }
+
         // Reset UI
         if (menuPanel != null) menuPanel.SetActive(true);
         if (lobbyPanel != null) lobbyPanel.SetActive(false);
@@ -532,6 +543,48 @@ public class NetworkGameLauncher : NetworkBehaviour
         UpdateStatusText("Disconnected. Ready to connect...");
     }
 
+    // Disconnect (if connected) and then load title scene if provided
+    public void DisconnectAndLoadTitle()
+    {
+        StartCoroutine(DisconnectThenLoadTitleCoroutine());
+    }
 
+    IEnumerator DisconnectThenLoadTitleCoroutine()
+    {
+        Debug.Log("Disconnecting and loading title scene...");
+        gameStarted = false;
+        isConnecting = false;
+
+        if (NetworkManager.Singleton != null)
+        {
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
+            NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnected;
+
+            if (NetworkManager.Singleton.IsListening)
+            {
+                NetworkManager.Singleton.Shutdown();
+            }
+        }
+
+        // Give time for shutdown
+        yield return new WaitForSeconds(0.5f);
+
+        if (!string.IsNullOrEmpty(titleSceneName))
+        {
+            SceneManager.LoadScene(titleSceneName);
+        }
+        else
+        {
+            // Fallback to showing local menu in current scene
+            if (menuPanel != null) menuPanel.SetActive(true);
+            if (lobbyPanel != null) lobbyPanel.SetActive(false);
+            if (gameplayObjects != null) gameplayObjects.SetActive(false);
+            if (startGameButton != null) startGameButton.gameObject.SetActive(false);
+            if (disconnectButton != null) disconnectButton.gameObject.SetActive(false);
+            if (hostButton != null) hostButton.interactable = true;
+            if (joinButton != null) joinButton.interactable = true;
+            UpdateStatusText("Disconnected. Ready to connect...");
+        }
+    }
 
 }

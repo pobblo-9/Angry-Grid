@@ -38,4 +38,11 @@ public class SceneButton : MonoBehaviour
     {
         SceneManager.LoadScene("MenuScene");
     }
+
+    // Generic loader so you can configure any scene name from a UI Button parameter
+    public void LoadSceneByName(string sceneName)
+    {
+        if (!string.IsNullOrEmpty(sceneName))
+            SceneManager.LoadScene(sceneName);
+    }
 }
